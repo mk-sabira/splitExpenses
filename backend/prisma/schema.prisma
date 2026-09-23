@@ -1,0 +1,254 @@
+// Money is always stored as integer minor units (e.g. cents) in the group's currency.
+// Balances are never stored: they are derived from Expense/ExpenseSplit/Payment rows.
+// See DECISIONS.md for the reasoning behind each choice.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GroupStatus {
+  OPEN
+  CLOSED
+}
+
+enum MemberRole {
+  OWNER
+  MEMBER
+}
+
+enum SplitType {
+  EQUAL
+  SHARES
+  EXACT
+}
+
+enum Category {
+  FOOD
+  GROCERIES
+  TRANSPORT
+  ACCOMMODATION
+  ENTERTAINMENT
+  UTILITIES
+  RENT
+  SHOPPING
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+  CANCELLED
+}
+
+enum ActivityType {
+  GROUP_CREATED
+  MEMBER_JOINED
+  MEMBER_INVITED
+  EXPENSE_CREATED
+  EXPENSE_UPDATED
+  EXPENSE_DELETED
+  PAYMENT_CREATED
+  PAYMENT_CONFIRMED
+  PAYMENT_REJECTED
+  PAYMENT_CANCELLED
+  GROUP_SETTINGS_UPDATED
+  GROUP_CLOSED
+  GROUP_REOPENED
+}
+
+enum NotificationType {
+  EXPENSE_ADDED
+  EXPENSE_UPDATED
+  EXPENSE_DELETED
+  PAYMENT_REQUESTED
+  PAYMENT_CONFIRMED
+  PAYMENT_REJECTED
+  DEBT_REMINDER
+  GROUP_CLOSED
+  GROUP_REOPENED
+}
+
+enum EmailKind {
+  INVITE
+  EXPENSE_NOTIFICATION
+  DEBT_REMINDER
+  GROUP_CLOSED_SUMMARY
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique // always stored lowercased
+  name         String
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  memberships      GroupMember[]
+  groupsCreated    Group[]        @relation("GroupCreatedBy")
+  invitesSent      GroupInvite[]  @relation("InviteSentBy")
+  expensesPaid     Expense[]      @relation("ExpensePaidBy")
+  expensesCreated  Expense[]      @relation("ExpenseCreatedBy")
+  splits           ExpenseSplit[]
+  paymentsSent     Payment[]      @relation("PaymentFrom")
+  paymentsReceived Payment[]      @relation("PaymentTo")
+  activities       Activity[]
+  notifications    Notification[]
+}
+
+model Group {
+  id            String      @id @default(cuid())
+  name          String
+  currency      String // ISO 4217 code; locked once the group has an expense
+  reminderDays  Int         @default(7)
+  status        GroupStatus @default(OPEN)
+  closedAt      DateTime?
+  inviteToken   String      @unique // shareable join link; can be regenerated
+  // Incremented on every money-affecting write, inside the same transaction
+  // that holds the group row lock. Lets clients drop stale real-time updates.
+  ledgerVersion Int         @default(0)
+  createdById   String
+  createdAt     DateTime    @default(now())
+
+  createdBy     User           @relation("GroupCreatedBy", fields: [createdById], references: [id])
+  members       GroupMember[]
+  invites       GroupInvite[]
+  expenses      Expense[]
+  payments      Payment[]
+  activities    Activity[]
+  notifications Notification[]
+}
+
+model GroupMember {
+  groupId        String
+  userId         String
+  role           MemberRole @default(MEMBER)
+  joinedAt       DateTime   @default(now())
+  // Reminder bookkeeping, one "debt episode" per debtor per group:
+  // set when the member's net balance goes negative, cleared when it returns to >= 0.
+  owingSince     DateTime?
+  lastRemindedAt DateTime?
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@id([groupId, userId])
+  @@index([userId])
+}
+
+model GroupInvite {
+  id          String    @id @default(cuid())
+  groupId     String
+  email       String // lowercased; invitee may not have an account yet
+  token       String    @unique
+  invitedById String
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  group     Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  invitedBy User  @relation("InviteSentBy", fields: [invitedById], references: [id])
+
+  @@unique([groupId, email])
+}
+
+model Expense {
+  id          String    @id @default(cuid())
+  groupId     String
+  paidById    String
+  amount      Int // > 0, minor units
+  description String
+  category    Category
+  date        DateTime  @db.Date
+  comment     String?
+  splitType   SplitType
+  receiptPath String? // relative path on local disk
+  createdById String
+  version     Int       @default(1) // optimistic lock for concurrent edits
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime? // soft delete: excluded from balances, kept for history
+
+  group     Group          @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  paidBy    User           @relation("ExpensePaidBy", fields: [paidById], references: [id])
+  createdBy User           @relation("ExpenseCreatedBy", fields: [createdById], references: [id])
+  splits    ExpenseSplit[]
+
+  @@index([groupId, deletedAt])
+}
+
+model ExpenseSplit {
+  expenseId String
+  userId    String
+  shares    Int? // weight as entered: 1 each for EQUAL, N for SHARES, null for EXACT
+  amount    Int // resolved amount owed; SUM(amount) over an expense == Expense.amount
+
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@id([expenseId, userId])
+  @@index([userId])
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  groupId     String
+  fromUserId  String // debtor who says they paid
+  toUserId    String // recipient who must confirm
+  amount      Int // > 0, minor units
+  status      PaymentStatus @default(PENDING) // only CONFIRMED affects balances
+  note        String?
+  createdAt   DateTime      @default(now())
+  respondedAt DateTime?
+
+  group    Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  fromUser User  @relation("PaymentFrom", fields: [fromUserId], references: [id])
+  toUser   User  @relation("PaymentTo", fields: [toUserId], references: [id])
+
+  @@index([groupId, status])
+}
+
+model Activity {
+  id        String       @id @default(cuid())
+  groupId   String
+  actorId   String
+  type      ActivityType
+  data      Json // snapshot of the change; edits store { before, after }
+  createdAt DateTime     @default(now())
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  actor User  @relation(fields: [actorId], references: [id])
+
+  @@index([groupId, createdAt])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  groupId   String?
+  type      NotificationType
+  data      Json
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user  User   @relation(fields: [userId], references: [id])
+  group Group? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+// Email stub: every "sent" email is logged to the console and stored here.
+model EmailOutbox {
+  id        String    @id @default(cuid())
+  to        String
+  subject   String
+  body      String
+  kind      EmailKind
+  createdAt DateTime  @default(now())
+
+  @@index([to, createdAt])
+}

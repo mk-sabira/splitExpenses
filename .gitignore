@@ -1,2 +1,6 @@
-node_modules/
+# node_modules may be a symlink (e.g. to /goinfre), so no trailing slash
+node_modules
 .env
+dist/
+uploads/
+*.log
