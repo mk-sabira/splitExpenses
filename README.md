@@ -45,3 +45,7 @@ curl -X POST localhost:3000/api/groups/<groupId>/expenses \
   -d '{"paidById":"<aliceId>","amount":4000,"description":"Dinner","category":"FOOD","date":"2026-09-24","split":{"type":"EQUAL","participants":["<aliceId>","<bobId>"]}}'
 ```
 Watch a different group in a third terminal to check that it gets nothing.
+
+## Debtor reminders
+
+The API process checks for due reminders every hour (`REMINDER_INTERVAL_MS`) and once at startup. A member who owes money gets a `DEBT_REMINDER` email after owing for the group's `reminderDays`, then again every `reminderDays`, but never more than once a week. Emails are stubbed, so they show up in the API console and the `EmailOutbox` table. See D19 in `DECISIONS.md`.

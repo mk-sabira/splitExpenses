@@ -16,6 +16,7 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
 | 2026-09-24 09:40 | Milestone 4: groups, owner/member roles, invite by link and by email, settings with currency lock, close/reopen |
 | 2026-09-24 10:05 | Milestone 5: repayments (propose / confirm / reject / cancel), minimum-transfer settlement, closing summary email |
 | 2026-09-24 10:15 | Milestone 6: real-time sync (Socket.io rooms per group, snapshot broadcasts), dev test page and terminal watcher |
+| 2026-09-24 10:40 | Milestone 7: debtor reminder job (per-group `reminderDays`, at most weekly, re-checked under the group lock) |
 
 ## Works
 - `docker compose up -d` starts PostgreSQL 16. The data volume persists between restarts.
@@ -42,14 +43,16 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
   - `GET /api/groups/:groupId/payments` (`?status=`) lists a group's payments; `GET /api/payments/pending` lists yours across groups. Allowed in closed groups (D8).
 - Closing a group emails every member a summary: final balances, the settlement plan and their own part in it.
 - Real-time sync (D18): Socket.io with JWT handshake, one room per group joined via `group:join`. Every committed change broadcasts `group:update` with fresh balances, settlement, status and pending payments, in order per group. Manual testing: `/dev/realtime` page or `npm run watch` (see README).
-- `npm test`: 122 tests (Vitest + Supertest) against the local database. Each file cleans up its own rows. They include:
+- Debtor reminders (D19): an hourly in-process job emails anyone who has owed money for the group's `reminderDays`, then repeats at that interval but never more than once a week. Settled debts are never reminded, and debtors whose pending payments cover the whole debt are skipped. Closed groups are included (D8). Interval: `REMINDER_INTERVAL_MS`.
+- `npm test`: 142 tests (Vitest + Supertest) against the local database. Each file cleans up its own rows. They include:
   - 20,000 random splits that must sum exactly and round fairly;
   - 80 random create/edit/delete steps with repayments, checking balances after every step;
   - concurrency tests;
   - a create → repay → edit → delete scenario;
   - 3,000 random settlement cases checked against an independent brute-force minimum;
   - full, partial, rejected and racing repayments;
-  - real Socket.io clients: room isolation between groups, every change type, and update ordering.
+  - real Socket.io clients: room isolation between groups, every change type, and update ordering;
+  - reminders over simulated weeks of hourly runs (no real waiting), including the weekly cap, settling before and between reminders, a settlement racing the job, and overlapping runs.
 - `npm run typecheck` covers `src` and `tests`.
 
 ## Partial
@@ -62,9 +65,7 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
 - Activity feed
 - Notifications when an expense involving you is added or edited, and for payment requests and responses (planned as a per-user Socket.io room plus stored `Notification` rows)
 - Receipt upload for expenses
-- Debtor reminders (interval job)
 - Frontend (React + TypeScript + Tailwind)
-- Automated tests for reminders (expenses, balances, settlement and repayments are covered)
 
 ## Deliberately out of scope
 - Real email delivery: emails are logged to the console and stored in `EmailOutbox`.
@@ -75,7 +76,7 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
 
 ## What I'd do next (beyond the current scope)
 - Leaving a group or removing a member: allowed only when their balance is zero, or by transferring their balance to someone else. Needs a `leftAt` column on `GroupMember` and filtering in the member and split lists.
-- Real email delivery with a background job queue (e.g. BullMQ) instead of the in-process interval job.
+- Real email delivery with a background job queue (e.g. BullMQ) instead of the in-process interval job. This also matters for running several API instances, which would each scan for due reminders (still correct because of the row lock, just wasteful).
 - Receipt storage in object storage (S3-compatible).
 
 ## Environment notes
