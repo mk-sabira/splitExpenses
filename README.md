@@ -19,6 +19,15 @@ npm run dev                     # API on http://localhost:3000
 npm test                        # needs the database running
 ```
 
+## Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev                     # http://localhost:5173, proxies /api and /socket.io to :3000
+```
+Set `API_URL` if the backend isn't on `http://localhost:3000`. The style guide with every base component is at http://localhost:5173/design (dev only). See D20 and D21 in `DECISIONS.md`.
+
 ## Real-time sync: manual testing
 
 Clients connect to Socket.io with their JWT (`io(url, { auth: { token } })`), then join a group's room with `group:join` (ack: `{ ok, update }`, where `update` is the current snapshot). After every change to that group, the room gets a `group:update` event with fresh balances, the settlement plan, group status and pending payments. See D18 in `DECISIONS.md`.

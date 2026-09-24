@@ -17,6 +17,7 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
 | 2026-09-24 10:05 | Milestone 5: repayments (propose / confirm / reject / cancel), minimum-transfer settlement, closing summary email |
 | 2026-09-24 10:15 | Milestone 6: real-time sync (Socket.io rooms per group, snapshot broadcasts), dev test page and terminal watcher |
 | 2026-09-24 10:40 | Milestone 7: debtor reminder job (per-group `reminderDays`, at most weekly, re-checked under the group lock) |
+| 2026-09-24 12:30 | Frontend milestone 1: Vite + React + Tailwind skeleton, routes, hand-drawn design system and `/design` style guide, for visual review |
 
 ## Works
 - `docker compose up -d` starts PostgreSQL 16. The data volume persists between restarts.
@@ -55,6 +56,8 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
   - reminders over simulated weeks of hourly runs (no real waiting), including the weekly cap, settling before and between reminders, a settlement racing the job, and overlapping runs.
 - `npm run typecheck` covers `src` and `tests`.
 
+- Frontend skeleton (D20, D21): every route exists (screens are placeholders for now). The base components are Card, Button (primary / default / quiet), TextField, SelectField, Checkbox, Choice (split-type picker), Divider, Arrow, Stamp and Money, all drawn with rough.js. They can be reviewed at http://localhost:5173/design. Typecheck and production build pass, and the layout was checked at 1280 px and 390 px.
+
 ## Partial
 - Expense, group, invite and payment changes record `Activity` rows, but there's no feed endpoint yet.
 - No endpoint to revoke a pending email invite or transfer ownership.
@@ -65,7 +68,7 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
 - Activity feed
 - Notifications when an expense involving you is added or edited, and for payment requests and responses (planned as a per-user Socket.io room plus stored `Notification` rows)
 - Receipt upload for expenses
-- Frontend (React + TypeScript + Tailwind)
+- Frontend screens: login/register, groups list, group view with live updates, expense detail/edit, invites, repayments. The skeleton and design system are done.
 
 ## Deliberately out of scope
 - Real email delivery: emails are logged to the console and stored in `EmailOutbox`.
@@ -80,5 +83,5 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
 - Receipt storage in object storage (S3-compatible).
 
 ## Environment notes
-- The dev machine's home partition is small, so `backend/node_modules` is a symlink to `/goinfre`. `.gitignore` uses `node_modules` without a trailing slash so the symlink is also ignored.
+- The dev machine's home partition is small, so `frontend/node_modules` is a symlink to `/goinfre`. (`backend/node_modules` was meant to be one too, but it's currently a regular directory on the home partition.) `.gitignore` uses `node_modules` without a trailing slash so the symlink is also ignored.
 - `npm audit` reports a high-severity advisory in `deepmerge-ts`, pulled in by the `prisma` CLI (a dev dependency). No fix is available upstream, and it doesn't ship at runtime.

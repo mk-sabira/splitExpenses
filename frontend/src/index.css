@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+/* Design tokens (D21). One accent, used only for primary actions and the
+   field being edited; everything else is ink on paper. */
+@theme {
+  --color-paper: #fdfcf9;
+  --color-ink: #1f1e1c;
+  --color-ink-soft: #57544e;
+  --color-ink-faint: #b4b0a7;
+  --color-accent: #2f4f96; /* fountain-pen blue */
+
+  --font-hand: "Kalam", "Comic Sans MS", cursive;
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  body {
+    @apply bg-paper font-sans text-ink antialiased;
+  }
+  /* Numbers always line up in columns. */
+  table,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  :focus-visible {
+    outline: 2px dashed var(--color-accent);
+    outline-offset: 4px;
+  }
+}
