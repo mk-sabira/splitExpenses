@@ -1,6 +1,7 @@
 import path from "node:path";
 import cors from "cors";
 import express from "express";
+import { activityRouter } from "./activity/routes";
 import { authRouter } from "./auth/routes";
 import { config } from "./config";
 import { expensesRouter } from "./expenses/routes";
@@ -31,6 +32,7 @@ export function createApp() {
   app.use("/api/groups/:groupId/balances", balancesRouter);
   app.use("/api/groups/:groupId/settlement", settlementRouter);
   app.use("/api/groups/:groupId/payments", groupPaymentsRouter);
+  app.use("/api/groups/:groupId/activity", activityRouter);
   app.use("/api/payments", paymentsRouter);
   app.use("/api/groups", groupsRouter);
 

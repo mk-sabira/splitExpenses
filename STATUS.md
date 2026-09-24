@@ -18,6 +18,7 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
 | 2026-09-24 10:15 | Milestone 6: real-time sync (Socket.io rooms per group, snapshot broadcasts), dev test page and terminal watcher |
 | 2026-09-24 10:40 | Milestone 7: debtor reminder job (per-group `reminderDays`, at most weekly, re-checked under the group lock) |
 | 2026-09-24 12:30 | Frontend milestone 1: Vite + React + Tailwind skeleton, routes, hand-drawn design system and `/design` style guide, for visual review |
+| 2026-09-24 12:50 | Activity feed endpoint (keyset-paginated, newest first), ahead of the group view |
 
 ## Works
 - `docker compose up -d` starts PostgreSQL 16. The data volume persists between restarts.
@@ -44,8 +45,9 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
   - `GET /api/groups/:groupId/payments` (`?status=`) lists a group's payments; `GET /api/payments/pending` lists yours across groups. Allowed in closed groups (D8).
 - Closing a group emails every member a summary: final balances, the settlement plan and their own part in it.
 - Real-time sync (D18): Socket.io with JWT handshake, one room per group joined via `group:join`. Every committed change broadcasts `group:update` with fresh balances, settlement, status and pending payments, in order per group. Manual testing: `/dev/realtime` page or `npm run watch` (see README).
+- Activity feed (D22): `GET /api/groups/:groupId/activity`, newest first, `?limit=` (default 30, max 100) and `?before=` cursor paging; each entry has its actor and the stored snapshot.
 - Debtor reminders (D19): an hourly in-process job emails anyone who has owed money for the group's `reminderDays`, then repeats at that interval but never more than once a week. Settled debts are never reminded, and debtors whose pending payments cover the whole debt are skipped. Closed groups are included (D8). Interval: `REMINDER_INTERVAL_MS`.
-- `npm test`: 142 tests (Vitest + Supertest) against the local database. Each file cleans up its own rows. They include:
+- `npm test`: 148 tests (Vitest + Supertest) against the local database. Each file cleans up its own rows. They include:
   - 20,000 random splits that must sum exactly and round fairly;
   - 80 random create/edit/delete steps with repayments, checking balances after every step;
   - concurrency tests;
@@ -53,19 +55,18 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
   - 3,000 random settlement cases checked against an independent brute-force minimum;
   - full, partial, rejected and racing repayments;
   - real Socket.io clients: room isolation between groups, every change type, and update ordering;
+  - activity paging: newest first, ties on identical timestamps, and entries arriving mid-scroll;
   - reminders over simulated weeks of hourly runs (no real waiting), including the weekly cap, settling before and between reminders, a settlement racing the job, and overlapping runs.
 - `npm run typecheck` covers `src` and `tests`.
 
 - Frontend skeleton (D20, D21): every route exists (screens are placeholders for now). The base components are Card, Button (primary / default / quiet), TextField, SelectField, Checkbox, Choice (split-type picker), Divider, Arrow, Stamp and Money, all drawn with rough.js. They can be reviewed at http://localhost:5173/design. Typecheck and production build pass, and the layout was checked at 1280 px and 390 px.
 
 ## Partial
-- Expense, group, invite and payment changes record `Activity` rows, but there's no feed endpoint yet.
 - No endpoint to revoke a pending email invite or transfer ownership.
 - The expense list isn't paginated.
 
 ## Not done yet (planned)
 - Balances combined per currency across groups (per-group balances are done)
-- Activity feed
 - Notifications when an expense involving you is added or edited, and for payment requests and responses (planned as a per-user Socket.io room plus stored `Notification` rows)
 - Receipt upload for expenses
 - Frontend screens: login/register, groups list, group view with live updates, expense detail/edit, invites, repayments. The skeleton and design system are done.
