@@ -17,4 +17,6 @@ export const config = {
   jwtSecret,
   jwtExpiresIn: "7d",
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
+  // Base URL of the frontend, used for links in emails.
+  appUrl: (process.env.APP_URL ?? "http://localhost:5173").replace(/\/$/, ""),
 } as const;

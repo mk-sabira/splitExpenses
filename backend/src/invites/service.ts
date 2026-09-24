@@ -1,0 +1,133 @@
+import { config } from "../config";
+import { prisma } from "../db";
+import { logEmails, queueEmail } from "../email/outbox";
+import { addMember, newToken } from "../groups/service";
+import { withGroupRowLock } from "../ledger/lock";
+import { HttpError } from "../lib/errors";
+
+export const INVITE_TTL_DAYS = 7;
+
+const inviteLink = (token: string) => `${config.appUrl}/invites/${token}`;
+
+// ---------- invite by email ----------
+
+// Creates the invite, or re-sends it with a fresh token and expiry if this email
+// was already invited (the old link stops working).
+export async function inviteByEmail(groupId: string, actorId: string, email: string) {
+  const { invite, sent } = await withGroupRowLock(groupId, async (tx, group) => {
+    if (group.status === "CLOSED") throw new HttpError(409, "This group is closed");
+    const alreadyMember = await tx.groupMember.findFirst({
+      where: { groupId, user: { email } },
+      select: { userId: true },
+    });
+    if (alreadyMember) throw new HttpError(409, "This person is already a member of the group");
+
+    const fields = {
+      token: newToken(),
+      invitedById: actorId,
+      expiresAt: new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000),
+      acceptedAt: null,
+    };
+    const invite = await tx.groupInvite.upsert({
+      where: { groupId_email: { groupId, email } },
+      create: { groupId, email, ...fields },
+      update: fields,
+      include: { group: { select: { name: true } }, invitedBy: { select: { name: true } } },
+    });
+    await tx.activity.create({
+      data: { groupId, actorId, type: "MEMBER_INVITED", data: { email } },
+    });
+    const sent = await queueEmail(tx, {
+      to: email,
+      kind: "INVITE",
+      subject: `${invite.invitedBy.name} invited you to "${invite.group.name}"`,
+      body: [
+        `${invite.invitedBy.name} invited you to share expenses in "${invite.group.name}".`,
+        ``,
+        `Accept the invite: ${inviteLink(invite.token)}`,
+        ``,
+        `If you don't have an account yet, you can create one with this email address from that page.`,
+        `The link expires in ${INVITE_TTL_DAYS} days.`,
+      ].join("\n"),
+    });
+    return { invite, sent };
+  });
+  logEmails([sent]);
+  return { id: invite.id, email: invite.email, expiresAt: invite.expiresAt };
+}
+
+async function findInvite(token: string) {
+  const invite = await prisma.groupInvite.findUnique({
+    where: { token },
+    include: {
+      group: { select: { id: true, name: true, status: true } },
+      invitedBy: { select: { name: true } },
+    },
+  });
+  if (!invite) throw new HttpError(404, "Invite not found");
+  return invite;
+}
+
+// Public, so the invite page can show what's being accepted before the person
+// logs in or registers.
+export async function previewEmailInvite(token: string) {
+  const invite = await findInvite(token);
+  return {
+    email: invite.email,
+    groupName: invite.group.name,
+    invitedBy: invite.invitedBy.name,
+    expiresAt: invite.expiresAt,
+    expired: invite.expiresAt <= new Date(),
+    accepted: invite.acceptedAt !== null,
+  };
+}
+
+// The invite is personal: only the account with the invited email can accept it.
+// A new user registers with that email first, then accepts.
+export async function acceptEmailInvite(token: string, userId: string) {
+  const invite = await findInvite(token);
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { email: true } });
+  if (user.email !== invite.email) {
+    throw new HttpError(403, "This invite was sent to a different email address");
+  }
+  const groupId = invite.group.id;
+  await withGroupRowLock(groupId, async (tx, group) => {
+    // Re-read under the lock, so two accepts at once can't both pass the checks.
+    const current = await tx.groupInvite.findUniqueOrThrow({ where: { id: invite.id } });
+    if (current.acceptedAt === null && current.expiresAt <= new Date()) {
+      throw new HttpError(410, "This invite has expired. Ask for a new one.");
+    }
+    await addMember(tx, groupId, userId, group.status);
+    if (current.acceptedAt === null) {
+      await tx.groupInvite.update({ where: { id: invite.id }, data: { acceptedAt: new Date() } });
+    }
+  });
+  return groupId;
+}
+
+// ---------- shareable link ----------
+
+async function findGroupByLink(inviteToken: string) {
+  const group = await prisma.group.findUnique({
+    where: { inviteToken },
+    select: { id: true, name: true, status: true, _count: { select: { members: true } } },
+  });
+  if (!group) throw new HttpError(404, "This invite link is invalid or has been replaced");
+  return group;
+}
+
+export async function previewLink(inviteToken: string) {
+  const group = await findGroupByLink(inviteToken);
+  return { groupName: group.name, memberCount: group._count.members, closed: group.status === "CLOSED" };
+}
+
+export async function joinByLink(inviteToken: string, userId: string) {
+  const { id: groupId } = await findGroupByLink(inviteToken);
+  await withGroupRowLock(groupId, async (tx, group) => {
+    // The link may have been regenerated while we waited for the lock.
+    const stillValid = await tx.group.count({ where: { id: groupId, inviteToken } });
+    if (!stillValid) throw new HttpError(404, "This invite link is invalid or has been replaced");
+    await addMember(tx, groupId, userId, group.status);
+  });
+  return groupId;
+}

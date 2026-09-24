@@ -54,3 +54,13 @@ Passwords are hashed with bcrypt (cost 12) using `bcryptjs`, which is pure JS an
 - **Non-members** get `404` for everything under `/api/groups/:id`, the same as a group that doesn't exist, so group IDs can't be probed.
 - **owingSince (D7)** is already updated inside every locked money write, although the reminder job comes later. That way the later milestone doesn't have to rebuild history.
 - **`GET /groups/:id/balances`** reads the balances and `ledgerVersion` in one `REPEATABLE READ` snapshot, so the two always match. Every member is listed, even at 0. Members can't leave a group (agreed 2026-09-23), but if a future change lets them, anyone who's no longer a member but still has a non-zero balance stays listed rather than their balance silently vanishing.
+
+### D16 — Groups, roles and invites — 2026-09-24 09:40
+- **Roles.** Only the owner (the group's creator) can change settings, close or reopen the group, or replace the invite link. Any member can invite people, by email or by sharing the link. Owners can't be transferred yet.
+- **Two kinds of invite.** The shareable link (`Group.inviteToken`) lets anyone who has it join. The owner can replace it, and the old link then stops working. An email invite (`GroupInvite`) is personal: only the account whose email matches can accept it. It expires after 7 days. Re-inviting the same address issues a new token and expiry and sends a new email, and the old link stops working. A new user registers with the invited email, then accepts. Keeping registration separate from invites keeps the auth code simple.
+- **Invite previews are public** (`GET /api/invites/link/:token`, `GET /api/invites/email/:token`), so the page can show the group before the person logs in. The preview shows only what the token holder was already meant to see.
+- **Joins are idempotent.** Joining again, or accepting an invite that's already been accepted, succeeds and changes nothing. Joins take the group row lock (D4), so 10 simultaneous joins by one person create one membership.
+- **Closed groups** (D8) don't take new members or new email invites. Nobody new has anything to settle.
+- **The currency locks** once the group has any expense or payment, including soft-deleted expenses and pending payments. Their history is shown in that currency, so changing it would misrepresent them. The check and the change happen under the group row lock, so a currency change can't race the first expense.
+- **Close/reopen don't bump `ledgerVersion`.** No money changes. Clients get the status from the group itself.
+- **The closing summary email is deferred** to the settlement milestone, because it should list the suggested transfers.

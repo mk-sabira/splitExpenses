@@ -56,6 +56,8 @@ export async function cleanup(suffix: string) {
   // Deleting groups cascades to members, expenses, splits, payments and activity.
   await prisma.group.deleteMany({ where: { createdBy: where } });
   await prisma.user.deleteMany({ where });
+  // Stub emails aren't linked to a group or user, so match on the recipient.
+  await prisma.emailOutbox.deleteMany({ where: { to: { endsWith: suffix } } });
 }
 
 // Small seeded PRNG (mulberry32), so a failing random test can be replayed exactly.

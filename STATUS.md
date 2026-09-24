@@ -13,6 +13,7 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
 | 2026-09-23 20:11 | Milestone 1: docker-compose Postgres, Prisma schema, init migration applied |
 | 2026-09-24 09:21 | Milestone 2: Express app skeleton, auth (register, login, JWT, `/me`), first automated tests |
 | 2026-09-24 09:35 | Milestone 3: expense CRUD with EQUAL / SHARES / EXACT splits, largest-remainder rounding, balances endpoint, invariant tests |
+| 2026-09-24 09:40 | Milestone 4: groups, owner/member roles, invite by link and by email, settings with currency lock, close/reopen |
 
 ## Works
 - `docker compose up -d` starts PostgreSQL 16. The data volume persists between restarts.
@@ -25,8 +26,14 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
   - EQUAL, SHARES and EXACT splits. Largest-remainder rounding with ties broken by join order (D5). EXACT amounts must add up exactly.
   - Every write takes the group row lock, bumps `ledgerVersion` and updates `owingSince` in the same transaction (D4, D7).
   - Optimistic lock on edits: a stale `version` gets `409` (D10). Deletes are soft deletes with activity snapshots (D9). Closed groups block expense changes (D8).
+- Groups (see D16): `POST /api/groups`, `GET /api/groups` (mine), `GET /api/groups/:id` (members, pending invites, invite link, `currencyLocked`).
+  - Owner-only: `PUT /api/groups/:id/settings` (name, currency, reminderDays), `POST …/close`, `POST …/reopen`, `POST …/invite-link` (replace the link).
+  - The currency locks once there's any expense or payment. Closed groups block expense changes, new members and new invites.
+- Invites:
+  - Shareable link: `GET /api/invites/link/:token` (public preview), `POST …/join`.
+  - By email: `POST /api/groups/:id/invites` stores the invite and stub-sends an email (console + `EmailOutbox`). `GET /api/invites/email/:token` (public preview), `POST …/accept` (the invited email only; new users register first). Expires after 7 days; re-inviting issues a new token.
 - Balances: `GET /api/groups/:groupId/balances`, derived from expenses and confirmed repayments (D3).
-- `npm test`: 51 tests (Vitest + Supertest) against the local database. Each file cleans up its own rows. They include:
+- `npm test`: 83 tests (Vitest + Supertest) against the local database. Each file cleans up its own rows. They include:
   - 20,000 random splits that must sum exactly and round fairly;
   - 80 random create/edit/delete steps with repayments, checking balances after every step;
   - concurrency tests;
@@ -34,12 +41,12 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
 - `npm run typecheck` covers `src` and `tests`.
 
 ## Partial
-- Groups and payments have database tables and are used by the expense code, but have no API yet. Tests create them directly in the database.
-- Expense writes record `Activity` rows, but there's no feed endpoint yet.
+- Payments have a database table and count toward balances, but have no API yet. Tests create them directly in the database.
+- Expense, group and invite changes record `Activity` rows, but there's no feed endpoint yet.
+- No endpoint to revoke a pending email invite or transfer ownership.
 - The expense list isn't paginated.
 
 ## Not done yet (planned)
-- Groups: create, invite by link or email, group currency, settings
 - Balances combined per currency across groups (per-group balances are done)
 - Minimum-transfer settlement algorithm
 - Repayments API with recipient confirmation (balances already count confirmed repayments)
@@ -48,7 +55,7 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
 - Notifications when an expense involving you is added or edited
 - Receipt upload for expenses
 - Debtor reminders (interval job)
-- Closing and reopening a group, with the summary email
+- Summary email when a group is closed (close/reopen itself is done; see D16)
 - Frontend (React + TypeScript + Tailwind)
 - Automated tests for settlement, repayments and reminders (expense and balance invariants are covered)
 
