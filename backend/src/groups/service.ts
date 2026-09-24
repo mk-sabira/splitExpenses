@@ -1,9 +1,11 @@
 import { randomBytes } from "node:crypto";
 import type { GroupStatus, Prisma } from "@prisma/client";
 import { config } from "../config";
+import { logEmails, queueEmail } from "../email/outbox";
 import { prisma } from "../db";
 import { withGroupRowLock } from "../ledger/lock";
 import { HttpError } from "../lib/errors";
+import { closingSummaryEmails } from "./closingSummary";
 
 type Tx = Prisma.TransactionClient;
 
@@ -132,8 +134,9 @@ export function updateSettings(groupId: string, actorId: string, patch: Partial<
 }
 
 // Closing only blocks expense changes; repayments and reminders carry on (D8).
-export function setStatus(groupId: string, actorId: string, status: GroupStatus) {
-  return withGroupRowLock(groupId, async (tx, group) => {
+// Closing emails every member a summary with the settlement plan.
+export async function setStatus(groupId: string, actorId: string, status: GroupStatus) {
+  const emails = await withGroupRowLock(groupId, async (tx, group) => {
     if (group.status === status) {
       throw new HttpError(409, status === "CLOSED" ? "The group is already closed" : "The group is already open");
     }
@@ -149,7 +152,12 @@ export function setStatus(groupId: string, actorId: string, status: GroupStatus)
         data: {},
       },
     });
+    if (status === "OPEN") return [];
+    const emails = await closingSummaryEmails(tx, groupId, actorId);
+    for (const email of emails) await queueEmail(tx, email);
+    return emails;
   });
+  logEmails(emails);
 }
 
 // Replaces the shareable link; the old one stops working immediately.

@@ -14,6 +14,7 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
 | 2026-09-24 09:21 | Milestone 2: Express app skeleton, auth (register, login, JWT, `/me`), first automated tests |
 | 2026-09-24 09:35 | Milestone 3: expense CRUD with EQUAL / SHARES / EXACT splits, largest-remainder rounding, balances endpoint, invariant tests |
 | 2026-09-24 09:40 | Milestone 4: groups, owner/member roles, invite by link and by email, settings with currency lock, close/reopen |
+| 2026-09-24 10:05 | Milestone 5: repayments (propose / confirm / reject / cancel), minimum-transfer settlement, closing summary email |
 
 ## Works
 - `docker compose up -d` starts PostgreSQL 16. The data volume persists between restarts.
@@ -33,31 +34,35 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
   - Shareable link: `GET /api/invites/link/:token` (public preview), `POST …/join`.
   - By email: `POST /api/groups/:id/invites` stores the invite and stub-sends an email (console + `EmailOutbox`). `GET /api/invites/email/:token` (public preview), `POST …/accept` (the invited email only; new users register first). Expires after 7 days; re-inviting issues a new token.
 - Balances: `GET /api/groups/:groupId/balances`, derived from expenses and confirmed repayments (D3).
-- `npm test`: 83 tests (Vitest + Supertest) against the local database. Each file cleans up its own rows. They include:
+- Settlement (D6, D17): `GET /api/groups/:groupId/settlement` returns the fewest transfers that settle everyone. It uses an exact bitmask search for ≤ 15 non-zero balances and greedy matching above that.
+- Repayments (D17):
+  - `POST /api/groups/:groupId/payments` proposes a full or partial repayment, capped at what's still owed.
+  - `POST /api/payments/:id/confirm` and `…/reject` are recipient only; `…/cancel` is payer only.
+  - `GET /api/groups/:groupId/payments` (`?status=`) lists a group's payments; `GET /api/payments/pending` lists yours across groups. Allowed in closed groups (D8).
+- Closing a group emails every member a summary: final balances, the settlement plan and their own part in it.
+- `npm test`: 111 tests (Vitest + Supertest) against the local database. Each file cleans up its own rows. They include:
   - 20,000 random splits that must sum exactly and round fairly;
   - 80 random create/edit/delete steps with repayments, checking balances after every step;
   - concurrency tests;
-  - a create → repay → edit → delete scenario.
+  - a create → repay → edit → delete scenario;
+  - 3,000 random settlement cases checked against an independent brute-force minimum;
+  - full, partial, rejected and racing repayments.
 - `npm run typecheck` covers `src` and `tests`.
 
 ## Partial
-- Payments have a database table and count toward balances, but have no API yet. Tests create them directly in the database.
-- Expense, group and invite changes record `Activity` rows, but there's no feed endpoint yet.
+- Expense, group, invite and payment changes record `Activity` rows, but there's no feed endpoint yet.
 - No endpoint to revoke a pending email invite or transfer ownership.
 - The expense list isn't paginated.
 
 ## Not done yet (planned)
 - Balances combined per currency across groups (per-group balances are done)
-- Minimum-transfer settlement algorithm
-- Repayments API with recipient confirmation (balances already count confirmed repayments)
 - Activity feed
 - Real-time sync (Socket.io)
-- Notifications when an expense involving you is added or edited
+- Notifications when an expense involving you is added or edited, and for payment requests and responses
 - Receipt upload for expenses
 - Debtor reminders (interval job)
-- Summary email when a group is closed (close/reopen itself is done; see D16)
 - Frontend (React + TypeScript + Tailwind)
-- Automated tests for settlement, repayments and reminders (expense and balance invariants are covered)
+- Automated tests for reminders (expenses, balances, settlement and repayments are covered)
 
 ## Deliberately out of scope
 - Real email delivery: emails are logged to the console and stored in `EmailOutbox`.
