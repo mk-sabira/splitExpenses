@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, type SubmitEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError, errorMessage } from "../lib/api";
@@ -86,7 +86,7 @@ function AuthCard({ mode }: { mode: Mode }) {
     navigate({ pathname: m === "login" ? "/login" : "/register", search: params.toString() });
   };
 
-  async function submit(e: FormEvent) {
+  async function submit(e: SubmitEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);

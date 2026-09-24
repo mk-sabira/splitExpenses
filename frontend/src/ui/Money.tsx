@@ -2,7 +2,7 @@ import { formatMoney } from "../lib/money";
 
 // Amounts stay in the plain sans-serif with tabular figures, so columns line up.
 export function Money({ amount, currency, className = "" }: { amount: number; currency: string; className?: string }) {
-  return <span className={`tabular font-medium whitespace-nowrap ${className}`}>{formatMoney(amount, currency)}</span>;
+  return <span className={`tabular font-sans font-medium whitespace-nowrap ${className}`}>{formatMoney(amount, currency)}</span>;
 }
 
 // A net balance (backend: > 0 is owed money, < 0 owes). Red means owing, green
@@ -23,7 +23,7 @@ export function Balance({
   const words = owes ? (you ? "you owe" : "owes") : you ? "you're owed" : "is owed";
   return (
     <span className={`${owes ? "text-owe" : "text-owed"} ${className}`}>
-      <span className="mr-2">{words}</span>
+      <span className="mr-2 whitespace-nowrap">{words}</span>
       <Money amount={Math.abs(net)} currency={currency} className="font-semibold" />
     </span>
   );

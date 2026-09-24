@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { RoughLayer, tiltFor, useSeed } from "./rough";
 
 export type Tone = "paper" | "sticky" | "sky" | "blush" | "mint" | "lilac";
@@ -25,9 +25,14 @@ export function Card({
   children: ReactNode;
 }) {
   const seed = useSeed();
+  const titleId = useId();
   const angle = tilt ?? tiltFor(seed);
   return (
-    <section className={`relative px-5 pt-4 pb-5 ${className}`} style={{ transform: `rotate(${angle}deg)` }}>
+    <section
+      aria-labelledby={title ? titleId : undefined}
+      className={`relative px-5 pt-4 pb-5 ${className}`}
+      style={{ transform: `rotate(${angle}deg)` }}
+    >
       <RoughLayer
         shape={{ kind: "rect" }}
         seed={seed}
@@ -41,7 +46,11 @@ export function Card({
       <div className="relative">
         {(title || aside) && (
           <header className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-            {title && <h2 className="font-hand text-2xl leading-tight font-bold">{title}</h2>}
+            {title && (
+              <h2 id={titleId} className="font-hand text-2xl leading-tight font-bold">
+                {title}
+              </h2>
+            )}
             {aside}
           </header>
         )}

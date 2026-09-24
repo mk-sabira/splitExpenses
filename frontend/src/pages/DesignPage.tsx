@@ -98,13 +98,13 @@ function YouSummarySample() {
       <Card tone="blush" tape="sky" className="min-w-64">
         <p className="font-hand text-xl text-ink-soft">In Weekend in Lisbon</p>
         <p className="mt-1 font-hand text-4xl font-bold text-owe">
-          you owe <Money amount={3000} currency="EUR" className="font-sans font-semibold" />
+          you owe <Money amount={3000} currency="EUR" className="font-semibold" />
         </p>
       </Card>
       <Card tone="mint" tape="marker" className="min-w-64 md:mt-4">
         <p className="font-hand text-xl text-ink-soft">In Flat 4B</p>
         <p className="mt-1 font-hand text-4xl font-bold text-owed">
-          you're owed <Money amount={12550} currency="EUR" className="font-sans font-semibold" />
+          you're owed <Money amount={12550} currency="EUR" className="font-semibold" />
         </p>
       </Card>
       <Card tone="paper" className="min-w-64">

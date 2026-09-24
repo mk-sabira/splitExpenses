@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from "react-router";
 import { AppShell } from "./AppShell";
 import { RedirectIfAuthenticated, RequireAuth } from "./auth/guards";
 import { DesignPage } from "./pages/DesignPage";
+import { GroupsPage } from "./pages/GroupsPage";
 import { LandingPage } from "./pages/LandingPage";
 import { NotFound, Placeholder } from "./pages/Placeholder";
 
@@ -21,7 +22,7 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Navigate to="/groups" replace /> },
-      { path: "groups", element: <Placeholder title="My groups" /> },
+      { path: "groups", element: <GroupsPage /> },
       { path: "groups/:groupId", element: <Placeholder title="Group" /> },
       { path: "groups/:groupId/expenses/:expenseId", element: <Placeholder title="Expense" /> },
       { path: "join/:token", element: <Placeholder title="Join a group" /> },

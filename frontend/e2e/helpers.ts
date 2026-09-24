@@ -24,3 +24,33 @@ export async function choose(page: Page, option: string) {
   await page.locator("label").filter({ has: page.getByRole("radio", { name: option, exact: true }) }).click();
   await expect(page.getByRole("radio", { name: option, exact: true })).toBeChecked();
 }
+
+// Calls the API as whoever is logged in on `page`, for setting up data that
+// a test isn't about (the UI for it is tested elsewhere).
+export async function apiAs(page: Page) {
+  const token = await page.evaluate(() => localStorage.getItem("esep.token"));
+  const call = async <T = any>(method: string, path: string, data?: unknown): Promise<T> => {
+    const res = await page.request.fetch(`/api${path}`, {
+      method,
+      data,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (!res.ok()) throw new Error(`${method} ${path} → ${res.status()} ${await res.text()}`);
+    return res.json();
+  };
+  const me = (await call<{ user: { id: string } }>("GET", "/auth/me")).user;
+  return { me, get: <T = any>(p: string) => call<T>("GET", p), post: <T = any>(p: string, d?: unknown) => call<T>("POST", p, d ?? {}) };
+}
+
+// A group owned by `owner` with the others joined through its invite link.
+export async function groupWith(owner: Page, others: Page[], name = "Trip", currency = "EUR") {
+  const a = await apiAs(owner);
+  const { group } = await a.post("/groups", { name, currency });
+  const members = [a.me.id];
+  for (const p of others) {
+    const b = await apiAs(p);
+    await b.post(`/invites/link/${group.inviteToken}/join`);
+    members.push(b.me.id);
+  }
+  return { id: group.id as string, members };
+}
