@@ -264,6 +264,17 @@ describe("proposing a repayment: validation", () => {
     expect((await propose(bob, g, dave, 100)).status).toBe(400);
   });
 
+  it("rejects a payment from someone who has just settled up exactly", async () => {
+    const g = await dinnerGroup();
+    const p = (await propose(bob, g, alice, 3000)).body.payment;
+    await act(alice, p.id, "confirm");
+    expect((await balances(g)).net[bob.id]).toBe(0);
+
+    const again = await propose(bob, g, alice, 1);
+    expect(again.status).toBe(400);
+    expect(again.body.error).toBe("You don't owe anything in this group");
+  });
+
   it("validates the body", async () => {
     const g = await dinnerGroup();
     for (const amount of [0, -1, 10.5, 2_147_483_648]) {

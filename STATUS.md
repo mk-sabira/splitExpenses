@@ -40,7 +40,7 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
   - `POST /api/payments/:id/confirm` and `…/reject` are recipient only; `…/cancel` is payer only.
   - `GET /api/groups/:groupId/payments` (`?status=`) lists a group's payments; `GET /api/payments/pending` lists yours across groups. Allowed in closed groups (D8).
 - Closing a group emails every member a summary: final balances, the settlement plan and their own part in it.
-- `npm test`: 111 tests (Vitest + Supertest) against the local database. Each file cleans up its own rows. They include:
+- `npm test`: 112 tests (Vitest + Supertest) against the local database. Each file cleans up its own rows. They include:
   - 20,000 random splits that must sum exactly and round fairly;
   - 80 random create/edit/delete steps with repayments, checking balances after every step;
   - concurrency tests;
