@@ -12,7 +12,9 @@ Requirements: Node 22+, Docker.
 ```bash
 docker compose up -d            # PostgreSQL 16 on localhost:5432
 cd backend
-cp .env.example .env
+cp .env.example .env            # then set JWT_SECRET (openssl rand -hex 32)
 npm install
 npx prisma migrate dev          # apply migrations + generate the client
+npm run dev                     # API on http://localhost:3000
+npm test                        # needs the database running
 ```
