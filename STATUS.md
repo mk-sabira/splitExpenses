@@ -88,6 +88,7 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
 - Leaving a group or removing a member: allowed only when their balance is zero, or by transferring their balance to someone else. Needs a `leftAt` column on `GroupMember` and filtering in the member and split lists.
 - Real email delivery with a background job queue (e.g. BullMQ) instead of the in-process interval job. This also matters for running several API instances, which would each scan for due reminders (still correct because of the row lock, just wasteful).
 - Receipt storage in object storage (S3-compatible).
+- Groups list balances in one request: the page currently makes one `GET /groups/:id/balances` call per group (an N+1 pattern, D25). Fine for a handful of groups, but adding the caller's `myNet` to `GET /groups` (computed for all their groups in one grouped query) would make it a single request.
 
 ## Environment notes
 - The dev machine's home partition is small, so `frontend/node_modules` is a symlink to `/goinfre`. (`backend/node_modules` was meant to be one too, but it's currently a regular directory on the home partition.) `.gitignore` uses `node_modules` without a trailing slash so the symlink is also ignored.
