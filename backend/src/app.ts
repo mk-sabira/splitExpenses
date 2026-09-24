@@ -1,3 +1,4 @@
+import path from "node:path";
 import cors from "cors";
 import express from "express";
 import { authRouter } from "./auth/routes";
@@ -17,6 +18,13 @@ export function createApp() {
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true });
   });
+  // Dev-only page for manually testing real-time sync (see README).
+  if (process.env.NODE_ENV !== "production") {
+    app.get("/dev/realtime", (_req, res) => {
+      res.sendFile(path.join(__dirname, "../dev/realtime.html"));
+    });
+  }
+
   app.use("/api/auth", authRouter);
   app.use("/api/invites", invitesRouter);
   app.use("/api/groups/:groupId/expenses", expensesRouter);

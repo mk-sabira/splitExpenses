@@ -15,6 +15,7 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
 | 2026-09-24 09:35 | Milestone 3: expense CRUD with EQUAL / SHARES / EXACT splits, largest-remainder rounding, balances endpoint, invariant tests |
 | 2026-09-24 09:40 | Milestone 4: groups, owner/member roles, invite by link and by email, settings with currency lock, close/reopen |
 | 2026-09-24 10:05 | Milestone 5: repayments (propose / confirm / reject / cancel), minimum-transfer settlement, closing summary email |
+| 2026-09-24 10:15 | Milestone 6: real-time sync (Socket.io rooms per group, snapshot broadcasts), dev test page and terminal watcher |
 
 ## Works
 - `docker compose up -d` starts PostgreSQL 16. The data volume persists between restarts.
@@ -40,13 +41,15 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
   - `POST /api/payments/:id/confirm` and `…/reject` are recipient only; `…/cancel` is payer only.
   - `GET /api/groups/:groupId/payments` (`?status=`) lists a group's payments; `GET /api/payments/pending` lists yours across groups. Allowed in closed groups (D8).
 - Closing a group emails every member a summary: final balances, the settlement plan and their own part in it.
-- `npm test`: 112 tests (Vitest + Supertest) against the local database. Each file cleans up its own rows. They include:
+- Real-time sync (D18): Socket.io with JWT handshake, one room per group joined via `group:join`. Every committed change broadcasts `group:update` with fresh balances, settlement, status and pending payments, in order per group. Manual testing: `/dev/realtime` page or `npm run watch` (see README).
+- `npm test`: 122 tests (Vitest + Supertest) against the local database. Each file cleans up its own rows. They include:
   - 20,000 random splits that must sum exactly and round fairly;
   - 80 random create/edit/delete steps with repayments, checking balances after every step;
   - concurrency tests;
   - a create → repay → edit → delete scenario;
   - 3,000 random settlement cases checked against an independent brute-force minimum;
-  - full, partial, rejected and racing repayments.
+  - full, partial, rejected and racing repayments;
+  - real Socket.io clients: room isolation between groups, every change type, and update ordering.
 - `npm run typecheck` covers `src` and `tests`.
 
 ## Partial
@@ -57,8 +60,7 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
 ## Not done yet (planned)
 - Balances combined per currency across groups (per-group balances are done)
 - Activity feed
-- Real-time sync (Socket.io)
-- Notifications when an expense involving you is added or edited, and for payment requests and responses
+- Notifications when an expense involving you is added or edited, and for payment requests and responses (planned as a per-user Socket.io room plus stored `Notification` rows)
 - Receipt upload for expenses
 - Debtor reminders (interval job)
 - Frontend (React + TypeScript + Tailwind)

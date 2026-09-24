@@ -5,6 +5,7 @@ import { logEmails, queueEmail } from "../email/outbox";
 import { prisma } from "../db";
 import { withGroupRowLock } from "../ledger/lock";
 import { HttpError } from "../lib/errors";
+import { publishGroupUpdate } from "../realtime";
 import { closingSummaryEmails } from "./closingSummary";
 
 type Tx = Prisma.TransactionClient;
@@ -108,8 +109,8 @@ function hasLedgerEntries(db: Tx, groupId: string) {
   ]).then(([expenses, payments]) => expenses + payments > 0);
 }
 
-export function updateSettings(groupId: string, actorId: string, patch: Partial<GroupSettings>) {
-  return withGroupRowLock(groupId, async (tx) => {
+export async function updateSettings(groupId: string, actorId: string, patch: Partial<GroupSettings>) {
+  const changed = await withGroupRowLock(groupId, async (tx) => {
     const current = await tx.group.findUniqueOrThrow({
       where: { id: groupId },
       select: { name: true, currency: true, reminderDays: true },
@@ -130,7 +131,9 @@ export function updateSettings(groupId: string, actorId: string, patch: Partial<
         },
       });
     }
+    return changed;
   });
+  if (changed) publishGroupUpdate(groupId, { type: "group.settings_updated", actorId });
 }
 
 // Closing only blocks expense changes; repayments and reminders carry on (D8).
@@ -158,6 +161,7 @@ export async function setStatus(groupId: string, actorId: string, status: GroupS
     return emails;
   });
   logEmails(emails);
+  publishGroupUpdate(groupId, { type: status === "CLOSED" ? "group.closed" : "group.reopened", actorId });
 }
 
 // Replaces the shareable link; the old one stops working immediately.

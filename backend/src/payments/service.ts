@@ -1,23 +1,13 @@
-import type { Payment, PaymentStatus, Prisma } from "@prisma/client";
+import type { PaymentStatus, Prisma } from "@prisma/client";
 import { prisma } from "../db";
 import { computeBalances } from "../ledger/balances";
 import { withGroupLock, withGroupRowLock } from "../ledger/lock";
 import { HttpError } from "../lib/errors";
+import { publishGroupUpdate } from "../realtime";
 import { formatMoney } from "../lib/money";
+import { serializePayment } from "./serialize";
 
-export function serializePayment(p: Payment) {
-  return {
-    id: p.id,
-    groupId: p.groupId,
-    fromUserId: p.fromUserId,
-    toUserId: p.toUserId,
-    amount: p.amount,
-    status: p.status,
-    note: p.note,
-    createdAt: p.createdAt.toISOString(),
-    respondedAt: p.respondedAt?.toISOString() ?? null,
-  };
-}
+export { serializePayment };
 
 export interface PaymentInput {
   toUserId: string;
@@ -69,6 +59,7 @@ export async function proposePayment(groupId: string, fromUserId: string, input:
     });
     return payment;
   });
+  publishGroupUpdate(groupId, { type: "payment.proposed", id: payment.id, actorId: fromUserId });
   return serializePayment(payment);
 }
 
@@ -83,9 +74,9 @@ async function findVisiblePayment(paymentId: string, userId: string) {
 }
 
 const transitions = {
-  confirm: { who: "toUserId", status: "CONFIRMED", activity: "PAYMENT_CONFIRMED" },
-  reject: { who: "toUserId", status: "REJECTED", activity: "PAYMENT_REJECTED" },
-  cancel: { who: "fromUserId", status: "CANCELLED", activity: "PAYMENT_CANCELLED" },
+  confirm: { who: "toUserId", status: "CONFIRMED", activity: "PAYMENT_CONFIRMED", change: "payment.confirmed" },
+  reject: { who: "toUserId", status: "REJECTED", activity: "PAYMENT_REJECTED", change: "payment.rejected" },
+  cancel: { who: "fromUserId", status: "CANCELLED", activity: "PAYMENT_CANCELLED", change: "payment.cancelled" },
 } as const;
 
 export type PaymentAction = keyof typeof transitions;
@@ -122,11 +113,15 @@ export async function respondToPayment(paymentId: string, userId: string, action
 
   // Only confirming changes balances, so only it is a money write (D4): it bumps
   // ledgerVersion and updates owingSince. Reject and cancel just take the lock.
+  const change = { type: t.change, id: paymentId, actorId: userId };
   if (action === "confirm") {
     const { result, ledgerVersion } = await withGroupLock(found.groupId, decide);
+    publishGroupUpdate(found.groupId, change);
     return { payment: result, ledgerVersion };
   }
-  return { payment: await withGroupRowLock(found.groupId, decide) };
+  const payment = await withGroupRowLock(found.groupId, decide);
+  publishGroupUpdate(found.groupId, change);
+  return { payment };
 }
 
 export async function listGroupPayments(groupId: string, status?: PaymentStatus) {

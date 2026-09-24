@@ -4,6 +4,7 @@ import { logEmails, queueEmail } from "../email/outbox";
 import { addMember, newToken } from "../groups/service";
 import { withGroupRowLock } from "../ledger/lock";
 import { HttpError } from "../lib/errors";
+import { publishGroupUpdate } from "../realtime";
 
 export const INVITE_TTL_DAYS = 7;
 
@@ -91,17 +92,19 @@ export async function acceptEmailInvite(token: string, userId: string) {
     throw new HttpError(403, "This invite was sent to a different email address");
   }
   const groupId = invite.group.id;
-  await withGroupRowLock(groupId, async (tx, group) => {
+  const joined = await withGroupRowLock(groupId, async (tx, group) => {
     // Re-read under the lock, so two accepts at once can't both pass the checks.
     const current = await tx.groupInvite.findUniqueOrThrow({ where: { id: invite.id } });
     if (current.acceptedAt === null && current.expiresAt <= new Date()) {
       throw new HttpError(410, "This invite has expired. Ask for a new one.");
     }
-    await addMember(tx, groupId, userId, group.status);
+    const joined = await addMember(tx, groupId, userId, group.status);
     if (current.acceptedAt === null) {
       await tx.groupInvite.update({ where: { id: invite.id }, data: { acceptedAt: new Date() } });
     }
+    return joined;
   });
+  if (joined) publishGroupUpdate(groupId, { type: "member.joined", actorId: userId });
   return groupId;
 }
 
@@ -123,11 +126,12 @@ export async function previewLink(inviteToken: string) {
 
 export async function joinByLink(inviteToken: string, userId: string) {
   const { id: groupId } = await findGroupByLink(inviteToken);
-  await withGroupRowLock(groupId, async (tx, group) => {
+  const joined = await withGroupRowLock(groupId, async (tx, group) => {
     // The link may have been regenerated while we waited for the lock.
     const stillValid = await tx.group.count({ where: { id: groupId, inviteToken } });
     if (!stillValid) throw new HttpError(404, "This invite link is invalid or has been replaced");
-    await addMember(tx, groupId, userId, group.status);
+    return addMember(tx, groupId, userId, group.status);
   });
+  if (joined) publishGroupUpdate(groupId, { type: "member.joined", actorId: userId });
   return groupId;
 }

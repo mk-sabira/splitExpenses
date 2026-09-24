@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Realtime test page</title>
+<!-- Dev-only page for manually testing real-time sync (D18). Served at /dev/realtime
+     when NODE_ENV isn't "production". Login is kept per tab (sessionStorage), so two
+     tabs can be two different users. -->
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1c1f24; --muted:#687080; --line:#dde1e7; --accent:#2f6fde; --ok:#1f8a4c; --bad:#c23b3b; --flash:#fff3c4; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#15171b; --card:#1e2127; --text:#e6e8eb; --muted:#9aa3b2; --line:#30353e; --accent:#6b9cff; --ok:#4cc27f; --bad:#ff7b7b; --flash:#4a4220; } }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  main { max-width:980px; margin:0 auto; padding:16px; display:grid; gap:12px; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); }
+  h1 { font-size:16px; margin:16px auto 0; max-width:980px; padding:0 16px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px; min-width:0; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:0 0 8px; }
+  input, select, button { font:inherit; padding:5px 8px; border:1px solid var(--line); border-radius:5px; background:var(--card); color:var(--text); }
+  input, select { width:100%; margin-bottom:6px; }
+  button { cursor:pointer; margin:0 4px 4px 0; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .row { display:flex; gap:6px; } .row > * { flex:1; }
+  .muted { color:var(--muted); } .pos { color:var(--ok); } .neg { color:var(--bad); }
+  table { width:100%; border-collapse:collapse; } td { padding:3px 0; border-bottom:1px solid var(--line); }
+  td:last-child { text-align:right; font-variant-numeric:tabular-nums; }
+  ul { margin:0; padding-left:18px; }
+  #log { font:12px/1.4 ui-monospace, monospace; max-height:260px; overflow:auto; margin:0; padding:0; list-style:none; }
+  #log li { padding:2px 0; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
+  .flash { animation: flash 1.2s ease-out; } @keyframes flash { from { background:var(--flash); } to { background:transparent; } }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--bad); margin-right:6px; } .dot.on { background:var(--ok); }
+  code { overflow-wrap:anywhere; }
+</style>
+</head>
+<body>
+<h1>Split Expenses: real-time test page</h1>
+<main>
+  <section id="auth">
+    <h2>1. Sign in <span class="muted" style="text-transform:none">(per tab)</span></h2>
+    <div id="signedOut">
+      <input id="email" placeholder="email" autocomplete="off">
+      <input id="password" type="password" placeholder="password (8+ chars)">
+      <input id="name" placeholder="name (register only)">
+      <button class="primary" id="login">Log in</button><button id="register">Register</button>
+    </div>
+    <div id="signedIn" hidden><p>Signed in as <b id="me"></b></p><button id="logout">Log out</button></div>
+    <p id="authError" class="neg"></p>
+  </section>
+
+  <section id="groups" hidden>
+    <h2>2. Pick a group</h2>
+    <select id="groupSelect"></select>
+    <button class="primary" id="watch">Watch this group</button>
+    <div class="row"><input id="newGroupName" placeholder="new group name"><input id="newGroupCurrency" placeholder="EUR" value="EUR"></div>
+    <button id="createGroup">Create group</button>
+    <input id="inviteToken" placeholder="invite token from another tab">
+    <button id="joinGroup">Join by invite token</button>
+    <p id="groupError" class="neg"></p>
+  </section>
+
+  <section id="live" hidden>
+    <h2><span class="dot" id="dot"></span>Live: <span id="groupName"></span></h2>
+    <p class="muted">ledgerVersion <b id="version"></b> · status <b id="status"></b> · invite token <code id="token"></code></p>
+    <table id="balances"></table>
+    <h2 style="margin-top:12px">Settlement <span class="muted" id="method" style="text-transform:none"></span></h2>
+    <ul id="settlement"></ul>
+    <h2 style="margin-top:12px">Pending payments</h2>
+    <ul id="pending"></ul>
+  </section>
+
+  <section id="actions" hidden>
+    <h2>3. Make changes (every watching tab updates)</h2>
+    <div class="row"><input id="amount" placeholder="amount, e.g. 12.50"><input id="desc" placeholder="description" value="Dinner"></div>
+    <button class="primary" id="addExpense">Add expense (I paid, split equally)</button>
+    <p><button id="close">Close group</button><button id="reopen">Reopen group</button></p>
+    <p id="actionError" class="neg"></p>
+  </section>
+
+  <section style="grid-column:1/-1">
+    <h2>Event log</h2>
+    <ul id="log"></ul>
+  </section>
+</main>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const state = {
+  token: sessionStorage.getItem("token"),
+  user: JSON.parse(sessionStorage.getItem("user") || "null"),
+  socket: null, groupId: null, group: null, members: new Map(),
+};
+
+function log(text, cls = "") {
+  const li = document.createElement("li");
+  li.textContent = `${new Date().toLocaleTimeString()}  ${text}`;
+  if (cls) li.className = cls;
+  $("log").prepend(li);
+}
+
+async function api(method, path, body) {
+  const res = await fetch(path, {
+    method,
+    headers: { "content-type": "application/json", ...(state.token ? { authorization: `Bearer ${state.token}` } : {}) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+// Amounts are integer minor units (D2); the currency decides how many decimals.
+const digits = (c) => new Intl.NumberFormat("en", { style: "currency", currency: c }).resolvedOptions().maximumFractionDigits;
+const money = (n, c) => new Intl.NumberFormat("en", { style: "currency", currency: c }).format(n / 10 ** digits(c));
+const nameOf = (id) => state.members.get(id) || id.slice(0, 8);
+
+// ---- auth
+async function signIn(path, body) {
+  $("authError").textContent = "";
+  try {
+    const { token, user } = await api("POST", path, body);
+    Object.assign(state, { token, user });
+    sessionStorage.setItem("token", token);
+    sessionStorage.setItem("user", JSON.stringify(user));
+    await afterSignIn();
+  } catch (e) { $("authError").textContent = e.message; }
+}
+$("login").onclick = () => signIn("/api/auth/login", { email: $("email").value, password: $("password").value });
+$("register").onclick = () => signIn("/api/auth/register", { email: $("email").value, password: $("password").value, name: $("name").value || $("email").value.split("@")[0] });
+$("logout").onclick = () => { sessionStorage.clear(); location.reload(); };
+
+async function afterSignIn() {
+  $("signedOut").hidden = true; $("signedIn").hidden = false; $("groups").hidden = false;
+  $("me").textContent = `${state.user.name} (${state.user.email})`;
+  connectSocket();
+  await loadGroups();
+}
+
+// ---- socket
+function connectSocket() {
+  state.socket?.disconnect();
+  const socket = io({ auth: { token: state.token } });
+  state.socket = socket;
+  socket.on("connect", () => { $("dot").classList.add("on"); log("connected"); if (state.groupId) join(state.groupId); });
+  socket.on("disconnect", (why) => { $("dot").classList.remove("on"); log(`disconnected: ${why}`, "neg"); });
+  socket.on("connect_error", (e) => log(`connect error: ${e.message}`, "neg"));
+  socket.on("group:update", (u) => {
+    const c = u.change;
+    log(`update ${c.type}${c.id ? " " + c.id.slice(0, 8) : ""} by ${nameOf(c.actorId)} → ledgerVersion ${u.ledgerVersion}`);
+    if (c.type === "member.joined") loadMembers(u.groupId).then(() => render(u));
+    else render(u);
+  });
+}
+
+async function join(groupId) {
+  // The ack carries the current snapshot, so the page is up to date straight away,
+  // including after a reconnect.
+  const res = await state.socket.timeout(5000).emitWithAck("group:join", groupId);
+  if (!res.ok) { $("groupError").textContent = res.error; return; }
+  log(`joined room for "${res.update.group.name}" (ledgerVersion ${res.update.ledgerVersion})`);
+  render(res.update);
+}
+
+// ---- groups
+async function loadGroups(selectId) {
+  const { groups } = await api("GET", "/api/groups");
+  $("groupSelect").innerHTML = groups.map((g) => `<option value="${g.id}">${g.name} (${g.currency}, ${g.memberCount} members)</option>`).join("");
+  if (selectId) $("groupSelect").value = selectId;
+}
+async function loadMembers(groupId) {
+  const { group } = await api("GET", `/api/groups/${groupId}`);
+  state.members = new Map(group.members.map((m) => [m.userId, m.name]));
+  state.group = group;
+  $("token").textContent = group.inviteToken;
+}
+async function watch(groupId) {
+  $("groupError").textContent = "";
+  if (state.groupId && state.groupId !== groupId) await state.socket.timeout(5000).emitWithAck("group:leave", state.groupId);
+  state.groupId = groupId;
+  await loadMembers(groupId);
+  $("live").hidden = false; $("actions").hidden = false;
+  await join(groupId);
+}
+$("watch").onclick = () => $("groupSelect").value && watch($("groupSelect").value);
+$("createGroup").onclick = async () => {
+  try {
+    const { group } = await api("POST", "/api/groups", { name: $("newGroupName").value || "Test group", currency: $("newGroupCurrency").value || "EUR" });
+    await loadGroups(group.id); await watch(group.id);
+  } catch (e) { $("groupError").textContent = e.message; }
+};
+$("joinGroup").onclick = async () => {
+  try {
+    const { group } = await api("POST", `/api/invites/link/${encodeURIComponent($("inviteToken").value.trim())}/join`);
+    await loadGroups(group.id); await watch(group.id);
+  } catch (e) { $("groupError").textContent = e.message; }
+};
+
+// ---- rendering a snapshot
+function render(u) {
+  if (u.groupId !== state.groupId) return;
+  const c = u.group.currency;
+  $("groupName").textContent = u.group.name;
+  $("version").textContent = u.ledgerVersion;
+  $("status").textContent = u.group.status;
+  $("balances").innerHTML = u.balances.map((b) =>
+    `<tr><td>${nameOf(b.userId)}${b.userId === state.user.id ? " (you)" : ""}</td><td class="${b.net > 0 ? "pos" : b.net < 0 ? "neg" : "muted"}">${b.net > 0 ? "+" : ""}${money(b.net, c)}</td></tr>`).join("");
+  $("method").textContent = `(${u.settlement.method})`;
+  $("settlement").innerHTML = u.settlement.transfers.length === 0 ? "<li class='muted'>Everyone is settled up</li>" :
+    u.settlement.transfers.map((t) => `<li>${nameOf(t.fromUserId)} pays ${nameOf(t.toUserId)} ${money(t.amount, c)}
+      ${t.fromUserId === state.user.id ? `<button data-pay="${t.toUserId}:${t.amount}">Record I paid this</button>` : ""}</li>`).join("");
+  $("pending").innerHTML = u.pendingPayments.length === 0 ? "<li class='muted'>None</li>" :
+    u.pendingPayments.map((p) => `<li>${nameOf(p.fromUserId)} → ${nameOf(p.toUserId)} ${money(p.amount, c)}
+      ${p.toUserId === state.user.id ? `<button data-act="confirm:${p.id}">Confirm</button><button data-act="reject:${p.id}">Reject</button>` : ""}
+      ${p.fromUserId === state.user.id ? `<button data-act="cancel:${p.id}">Cancel</button>` : ""}</li>`).join("");
+  for (const el of [$("balances"), $("settlement"), $("pending"), $("version")]) {
+    el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
+  }
+}
+
+// ---- actions
+async function run(fn) {
+  $("actionError").textContent = "";
+  try { await fn(); } catch (e) { $("actionError").textContent = e.message; log(`request failed: ${e.message}`, "neg"); }
+}
+$("addExpense").onclick = () => run(async () => {
+  const c = state.group.currency;
+  const amount = Math.round(parseFloat($("amount").value) * 10 ** digits(c));
+  await api("POST", `/api/groups/${state.groupId}/expenses`, {
+    paidById: state.user.id, amount, description: $("desc").value || "Expense", category: "OTHER",
+    date: new Date().toISOString().slice(0, 10),
+    split: { type: "EQUAL", participants: [...state.members.keys()] },
+  });
+});
+$("close").onclick = () => run(() => api("POST", `/api/groups/${state.groupId}/close`));
+$("reopen").onclick = () => run(() => api("POST", `/api/groups/${state.groupId}/reopen`));
+document.addEventListener("click", (e) => {
+  const pay = e.target.dataset?.pay, act = e.target.dataset?.act;
+  if (pay) { const [to, amount] = pay.split(":"); run(() => api("POST", `/api/groups/${state.groupId}/payments`, { toUserId: to, amount: Number(amount) })); }
+  if (act) { const [action, id] = act.split(":"); run(() => api("POST", `/api/payments/${id}/${action}`)); }
+});
+
+if (state.token && state.user) afterSignIn().catch((e) => { log(e.message, "neg"); sessionStorage.clear(); });
+</script>
+</body>
+</html>

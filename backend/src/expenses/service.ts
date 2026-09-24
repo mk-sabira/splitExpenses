@@ -2,6 +2,7 @@ import type { Category, Expense, ExpenseSplit, Prisma } from "@prisma/client";
 import { prisma } from "../db";
 import { withGroupLock } from "../ledger/lock";
 import { HttpError } from "../lib/errors";
+import { publishGroupUpdate } from "../realtime";
 import { participantIds, resolveSplit, type SplitInput } from "./split";
 
 export interface ExpenseInput {
@@ -59,8 +60,8 @@ export async function getExpense(groupId: string, expenseId: string) {
   return serializeExpense(expense);
 }
 
-export function createExpense(groupId: string, actorId: string, input: ExpenseInput) {
-  return withGroupLock(groupId, async (tx, group) => {
+export async function createExpense(groupId: string, actorId: string, input: ExpenseInput) {
+  const saved = await withGroupLock(groupId, async (tx, group) => {
     assertOpen(group.status);
     const splits = await resolveForGroup(tx, groupId, input);
     const expense = await tx.expense.create({
@@ -78,17 +79,19 @@ export function createExpense(groupId: string, actorId: string, input: ExpenseIn
     });
     return after;
   });
+  publishGroupUpdate(groupId, { type: "expense.created", id: saved.result.id, actorId });
+  return saved;
 }
 
 // Full replacement of the expense. `version` must match the stored one (D10).
-export function updateExpense(
+export async function updateExpense(
   groupId: string,
   expenseId: string,
   actorId: string,
   version: number,
   input: ExpenseInput,
 ) {
-  return withGroupLock(groupId, async (tx, group) => {
+  const saved = await withGroupLock(groupId, async (tx, group) => {
     assertOpen(group.status);
     const current = await findLive(tx, groupId, expenseId);
     if (current.version !== version) {
@@ -112,11 +115,13 @@ export function updateExpense(
     });
     return after;
   });
+  publishGroupUpdate(groupId, { type: "expense.updated", id: expenseId, actorId });
+  return saved;
 }
 
 // Soft delete (D9): the row stays for history but no longer counts toward balances.
-export function deleteExpense(groupId: string, expenseId: string, actorId: string) {
-  return withGroupLock(groupId, async (tx, group) => {
+export async function deleteExpense(groupId: string, expenseId: string, actorId: string) {
+  const saved = await withGroupLock(groupId, async (tx, group) => {
     assertOpen(group.status);
     const current = await findLive(tx, groupId, expenseId);
     await tx.expense.update({ where: { id: expenseId }, data: { deletedAt: new Date() } });
@@ -124,6 +129,8 @@ export function deleteExpense(groupId: string, expenseId: string, actorId: strin
       data: { groupId, actorId, type: "EXPENSE_DELETED", data: serializeExpense(current) },
     });
   });
+  publishGroupUpdate(groupId, { type: "expense.deleted", id: expenseId, actorId });
+  return saved;
 }
 
 function assertOpen(status: string) {
