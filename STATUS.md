@@ -19,6 +19,7 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
 | 2026-09-24 10:40 | Milestone 7: debtor reminder job (per-group `reminderDays`, at most weekly, re-checked under the group lock) |
 | 2026-09-24 12:30 | Frontend milestone 1: Vite + React + Tailwind skeleton, routes, hand-drawn design system and `/design` style guide, for visual review |
 | 2026-09-24 12:50 | Activity feed endpoint (keyset-paginated, newest first), ahead of the group view |
+| 2026-09-24 13:20 | Design revision after review: "Esep" wordmark, red/green balances, sticky-note colours, avatars, front page |
 
 ## Works
 - `docker compose up -d` starts PostgreSQL 16. The data volume persists between restarts.
@@ -59,7 +60,7 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
   - reminders over simulated weeks of hourly runs (no real waiting), including the weekly cap, settling before and between reminders, a settlement racing the job, and overlapping runs.
 - `npm run typecheck` covers `src` and `tests`.
 
-- Frontend skeleton (D20, D21): every route exists (screens are placeholders for now). The base components are Card, Button (primary / default / quiet), TextField, SelectField, Checkbox, Choice (split-type picker), Divider, Arrow, Stamp and Money, all drawn with rough.js. They can be reviewed at http://localhost:5173/design. Typecheck and production build pass, and the layout was checked at 1280 px and 390 px.
+- Frontend skeleton (D20, D21, D23): every route exists. The other screens are still placeholders, but the front page (`/login`, `/register`) is designed; its form isn't connected to the API yet. The base components are Card (sticky-note tones, washi tape), Button (primary / default / quiet), TextField, SelectField, Checkbox, Choice (split-type picker), Balance (red owes / green owed), Money, Avatar, Wordmark, Highlight, Divider, Arrow and Stamp, all drawn with rough.js. They can be reviewed at http://localhost:5173/design. Typecheck and production build pass, and the layout was checked at 1280 px and 390 px.
 
 ## Partial
 - No endpoint to revoke a pending email invite or transfer ownership.

@@ -1,20 +1,26 @@
 import type { ReactNode } from "react";
 import { RoughLayer, tiltFor, useSeed } from "./rough";
 
-// A sheet of paper with a hand-drawn edge, slightly askew. Pass tilt={0} for
-// cards holding forms or long tables, where a tilt would get in the way.
+export type Tone = "paper" | "sticky" | "sky" | "blush" | "mint" | "lilac";
+export type TapeColor = "marker" | "blush" | "sky" | "mint";
+
+// A sheet of paper with a hand-drawn edge, slightly askew. `tone` picks a
+// pale sticky-note fill; `tape` pins it to the page with a strip of washi tape.
+// Pass tilt={0} for cards holding forms or long tables.
 export function Card({
   title,
   aside,
   tilt,
-  taped = false,
+  tone = "paper",
+  tape,
   className = "",
   children,
 }: {
   title?: ReactNode;
   aside?: ReactNode; // right-hand side of the title row
   tilt?: number;
-  taped?: boolean;
+  tone?: Tone;
+  tape?: TapeColor;
   className?: string;
   children: ReactNode;
 }) {
@@ -28,10 +34,10 @@ export function Card({
         strokeWidth={1.4}
         roughness={1.5}
         bowing={1.4}
-        fill="var(--color-paper)"
+        fill={`var(--color-${tone})`}
         fillStyle="solid"
       />
-      {taped && <Tape seed={seed} />}
+      {tape && <Tape seed={seed} color={tape} />}
       <div className="relative">
         {(title || aside) && (
           <header className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
@@ -45,13 +51,16 @@ export function Card({
   );
 }
 
-// A strip of masking tape holding the card to the page.
-function Tape({ seed }: { seed: number }) {
+// A strip of translucent washi tape holding the card to the page.
+function Tape({ seed, color }: { seed: number; color: TapeColor }) {
   return (
     <div
       aria-hidden
-      className="absolute -top-3 left-1/2 h-6 w-24 bg-ink/10"
-      style={{ transform: `translateX(-50%) rotate(${tiltFor(seed * 7, 4)}deg)` }}
+      className="absolute -top-3 left-1/2 h-6 w-24 opacity-90 mix-blend-multiply"
+      style={{
+        transform: `translateX(-50%) rotate(${tiltFor(seed * 7, 4)}deg)`,
+        background: `repeating-linear-gradient(135deg, var(--color-${color}) 0 6px, color-mix(in srgb, var(--color-${color}) 70%, white) 6px 12px)`,
+      }}
     />
   );
 }

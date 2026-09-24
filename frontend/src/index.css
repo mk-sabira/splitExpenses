@@ -1,13 +1,33 @@
 @import "tailwindcss";
 
-/* Design tokens (D21). One accent, used only for primary actions and the
-   field being edited; everything else is ink on paper. */
-@theme {
-  --color-paper: #fdfcf9;
+/* Design tokens (D21, revised in D23). Ink on paper, coloured in with
+   markers: every colour has one job, listed next to it. `static` emits every
+   token even if no utility uses it, because the SVG strokes read them via var(). */
+@theme static {
+  --color-paper: #fdfbf6;
   --color-ink: #1f1e1c;
   --color-ink-soft: #57544e;
   --color-ink-faint: #b4b0a7;
-  --color-accent: #2f4f96; /* fountain-pen blue */
+
+  --color-accent: #2f4f96; /* fountain-pen blue: primary actions, active field */
+  --color-owe: #c0392b; /* brick red: money you owe, "owes" */
+  --color-owed: #2e7d4f; /* bottle green: money owed to you, "is owed" */
+  --color-marker: #ffd84d; /* highlighter yellow: emphasis behind text */
+
+  /* Pale sticky-note fills for cards. */
+  --color-sticky: #fff3b8;
+  --color-sky: #dfe9fb;
+  --color-blush: #fbdcd3;
+  --color-mint: #d8efdd;
+  --color-lilac: #e8def8;
+
+  /* Member avatars. Each avatar also shows an initial, so colour is never the only cue. */
+  --color-crayon-coral: #e2674f;
+  --color-crayon-teal: #23958a;
+  --color-crayon-mustard: #d99a1c;
+  --color-crayon-violet: #7a5aa6;
+  --color-crayon-sky: #3f86d1;
+  --color-crayon-rose: #cf5a86;
 
   --font-hand: "Kalam", "Comic Sans MS", cursive;
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;

@@ -1,5 +1,21 @@
 import { useState, type ReactNode } from "react";
-import { Arrow, Button, Card, Checkbox, Choice, Divider, Money, SelectField, Stamp, TextField } from "../ui";
+import { Link } from "react-router";
+import {
+  Arrow,
+  Avatar,
+  Balance,
+  Button,
+  Card,
+  Checkbox,
+  Choice,
+  Divider,
+  Highlight,
+  Money,
+  SelectField,
+  Stamp,
+  TextField,
+  Wordmark,
+} from "../ui";
 import { RoughLayer, useSeed } from "../ui/rough";
 
 // Living style guide (dev only, /design). Every component shown with sample
@@ -10,13 +26,26 @@ type SplitType = "EQUAL" | "SHARES" | "EXACT";
 
 export function DesignPage() {
   return (
-    <div className="space-y-12">
+    <div className="space-y-14">
       <div>
-        <h1 className="font-hand text-5xl font-bold">Style guide</h1>
-        <p className="mt-1 max-w-prose text-ink-soft">
-          The base components, shown with sample data. Nothing on this page talks to the API.
+        <h1 className="font-hand text-5xl font-bold">
+          <Highlight>Style guide</Highlight>
+        </h1>
+        <p className="mt-2 max-w-prose text-ink-soft">
+          The base components, shown with sample data. Nothing on this page talks to the API. The front page is at{" "}
+          <Link to="/login" className="font-medium text-ink underline decoration-accent decoration-2 underline-offset-4">
+            /login
+          </Link>
+          .
         </p>
       </div>
+
+      <section className="flex flex-wrap items-end gap-x-16 gap-y-8">
+        <Wordmark size="lg" />
+        <Wordmark />
+      </section>
+
+      <YouSummarySample />
 
       {/* Deliberately uneven: the right column starts lower and the cards lean. */}
       <div className="grid items-start gap-x-10 gap-y-10 md:grid-cols-[1.15fr_1fr]">
@@ -30,7 +59,7 @@ export function DesignPage() {
       </div>
 
       <div className="grid items-start gap-10 md:grid-cols-3">
-        <Card title="Buttons">
+        <Card title="Buttons" tone="sky" tape="marker">
           <div className="flex flex-wrap items-center gap-4">
             <Button variant="primary">Add expense</Button>
             <Button>Invite</Button>
@@ -41,21 +70,49 @@ export function DesignPage() {
             One primary button per screen. Hover to watch the outline get re-sketched.
           </p>
         </Card>
-        <Card title="Marks" className="md:mt-6">
+        <Card title="Marks" tone="lilac" tape="mint" className="md:mt-6">
           <div className="flex flex-wrap items-center gap-4">
-            <Stamp>Closed</Stamp>
-            <Stamp>Pending</Stamp>
-            <Stamp>Settled</Stamp>
+            <Stamp ink="owe">Closed</Stamp>
+            <Stamp ink="accent">Pending</Stamp>
+            <Stamp ink="owed">Settled</Stamp>
           </div>
           <Divider className="my-5" />
           <div className="flex items-center gap-3">
-            Bob <Arrow /> Alice
+            Bob <Arrow color="var(--color-owe)" /> Alice
           </div>
+          <p className="mt-4">
+            Some <Highlight>highlighted</Highlight> words.
+          </p>
         </Card>
         <TypeSample />
       </div>
 
       <Palette />
+    </div>
+  );
+}
+
+function YouSummarySample() {
+  return (
+    <div className="flex flex-wrap gap-x-10 gap-y-8">
+      <Card tone="blush" tape="sky" className="min-w-64">
+        <p className="font-hand text-xl text-ink-soft">In Weekend in Lisbon</p>
+        <p className="mt-1 font-hand text-4xl font-bold text-owe">
+          you owe <Money amount={3000} currency="EUR" className="font-sans font-semibold" />
+        </p>
+      </Card>
+      <Card tone="mint" tape="marker" className="min-w-64 md:mt-4">
+        <p className="font-hand text-xl text-ink-soft">In Flat 4B</p>
+        <p className="mt-1 font-hand text-4xl font-bold text-owed">
+          you're owed <Money amount={12550} currency="EUR" className="font-sans font-semibold" />
+        </p>
+      </Card>
+      <Card tone="paper" className="min-w-64">
+        <p className="font-hand text-xl text-ink-soft">In Book club</p>
+        <p className="mt-1 font-hand text-4xl font-bold">
+          all <Highlight>settled up</Highlight>
+        </p>
+      </Card>
     </div>
   );
 }
@@ -68,20 +125,23 @@ function BalancesSample() {
     { name: "Dan", net: 0 },
   ];
   return (
-    <Card title="Weekend in Lisbon" aside={<span className="text-sm text-ink-soft">EUR · 4 members</span>} taped>
-      <table className="w-full">
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.name} className="h-9">
-              <td className="font-medium">
-                {r.name} {r.you && <span className="font-hand text-ink-soft">(you)</span>}
-              </td>
-              <td className="text-ink-soft">{r.net > 0 ? "is owed" : r.net < 0 ? "owes" : "settled up"}</td>
-              <td className="text-right">{r.net !== 0 ? <Money amount={Math.abs(r.net)} currency="EUR" /> : "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <Card
+      title="Weekend in Lisbon"
+      aside={<span className="text-sm text-ink-soft">EUR · 4 members</span>}
+      tone="sticky"
+      tape="blush"
+    >
+      <ul className="space-y-2.5">
+        {rows.map((r) => (
+          <li key={r.name} className="flex items-center gap-3">
+            <Avatar name={r.name} />
+            <span className="font-medium">
+              {r.name} {r.you && <span className="font-hand text-ink-soft">(you)</span>}
+            </span>
+            <Balance net={r.net} currency="EUR" className="ml-auto" />
+          </li>
+        ))}
+      </ul>
       <Divider className="my-4" />
       <h3 className="font-hand text-xl font-bold">To settle up</h3>
       <ul className="mt-2 space-y-3">
@@ -89,9 +149,11 @@ function BalancesSample() {
           ["Bob", "Alice", 3000],
           ["Carol", "Alice", 3000],
         ].map(([from, to, amount]) => (
-          <li key={from} className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <li key={from} className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
+            <Avatar name={from as string} size={28} />
             <span className="font-medium">{from}</span>
-            <Arrow />
+            <Arrow color="var(--color-owe)" />
+            <Avatar name={to as string} size={28} />
             <span className="font-medium">{to}</span>
             <Money amount={amount as number} currency="EUR" className="ml-auto" />
           </li>
@@ -103,9 +165,13 @@ function BalancesSample() {
 
 function PendingSample() {
   return (
-    <Card title="Waiting for you" aside={<Stamp>Pending</Stamp>}>
-      <p>
-        <span className="font-medium">Bob</span> says they paid you <Money amount={3000} currency="EUR" />.
+    <Card title="Waiting for you" aside={<Stamp ink="accent">Pending</Stamp>} tone="sky">
+      <p className="flex flex-wrap items-center gap-2">
+        <Avatar name="Bob" size={28} />
+        <span>
+          <span className="font-medium">Bob</span> says they paid you{" "}
+          <Money amount={3000} currency="EUR" className="text-owed" />.
+        </span>
       </p>
       <p className="mt-1 text-sm text-ink-soft">“Bank transfer, Friday” · 2 hours ago</p>
       <div className="mt-4 flex gap-3">
@@ -120,7 +186,7 @@ function ExpenseFormSample() {
   const [split, setSplit] = useState<SplitType>("EXACT");
   const [included, setIncluded] = useState<Record<string, boolean>>({ Alice: true, Bob: true, Carol: true, Dan: false });
   return (
-    <Card title="Add an expense" tilt={0}>
+    <Card title="Add an expense" tilt={0} tape="marker">
       <form className="space-y-5" onSubmit={(e) => e.preventDefault()}>
         <TextField label="What for?" placeholder="Dinner at Taberna" defaultValue="Dinner at Taberna" />
         <div className="grid grid-cols-2 gap-5">
@@ -151,7 +217,12 @@ function ExpenseFormSample() {
             />
           ))}
         </div>
-        <TextField label="Bob's part" defaultValue="25.00" className="tabular" error="The parts add up to €85.00, €5.00 short of €90.00." />
+        <TextField
+          label="Bob's part"
+          defaultValue="25.00"
+          className="tabular"
+          error="The parts add up to €85.00, €5.00 short of €90.00."
+        />
         <div className="flex items-center gap-4 pt-1">
           <Button variant="primary" type="submit">
             Add expense
@@ -165,44 +236,89 @@ function ExpenseFormSample() {
 
 function TypeSample() {
   return (
-    <Card title="Type" className="md:-mt-2">
-      <p className="font-hand text-3xl font-bold leading-tight">Kalam for headings</p>
-      <p className="mt-2">
-        IBM Plex Sans for body text, labels you read quickly, and every number.
-      </p>
+    <Card title="Type" tone="mint" tape="sky" className="md:-mt-2">
+      <p className="font-hand text-3xl leading-tight font-bold">Kalam for headings</p>
+      <p className="mt-2">IBM Plex Sans for body text, labels you read quickly, and every number.</p>
       <table className="mt-3 w-full text-sm">
         <tbody>
-          {[123456, 9000, 1101].map((n) => (
-            <tr key={n}>
-              <td className="text-ink-soft">tabular figures</td>
-              <td className="text-right">
-                <Money amount={n} currency="EUR" />
-              </td>
-            </tr>
-          ))}
+          <tr>
+            <td className="text-ink-soft">owed to you</td>
+            <td className="text-right">
+              <Money amount={123456} currency="EUR" className="text-owed" />
+            </td>
+          </tr>
+          <tr>
+            <td className="text-ink-soft">you owe</td>
+            <td className="text-right">
+              <Money amount={9000} currency="EUR" className="text-owe" />
+            </td>
+          </tr>
+          <tr>
+            <td className="text-ink-soft">neutral</td>
+            <td className="text-right">
+              <Money amount={1101} currency="EUR" />
+            </td>
+          </tr>
         </tbody>
       </table>
     </Card>
   );
 }
 
+const palette: { group: string; swatches: [string, string, string?][] }[] = [
+  {
+    group: "Ink",
+    swatches: [
+      ["ink", "#1f1e1c", "lines, text"],
+      ["ink-soft", "#57544e", "secondary text"],
+      ["ink-faint", "#b4b0a7", "dividers"],
+    ],
+  },
+  {
+    group: "Meaning",
+    swatches: [
+      ["accent", "#2f4f96", "primary action"],
+      ["owe", "#c0392b", "you owe"],
+      ["owed", "#2e7d4f", "you're owed"],
+      ["marker", "#ffd84d", "highlight"],
+    ],
+  },
+  {
+    group: "Sticky notes",
+    swatches: [
+      ["paper", "#fdfbf6"],
+      ["sticky", "#fff3b8"],
+      ["sky", "#dfe9fb"],
+      ["blush", "#fbdcd3"],
+      ["mint", "#d8efdd"],
+      ["lilac", "#e8def8"],
+    ],
+  },
+  {
+    group: "Crayons (avatars)",
+    swatches: ["coral", "teal", "mustard", "violet", "sky", "rose"].map((c) => [`crayon-${c}`, ""]),
+  },
+];
+
 function Palette() {
-  const swatches: [string, string, string][] = [
-    ["paper", "var(--color-paper)", "#fdfcf9 · background"],
-    ["ink", "var(--color-ink)", "#1f1e1c · lines and text"],
-    ["ink-soft", "var(--color-ink-soft)", "#57544e · secondary text"],
-    ["ink-faint", "var(--color-ink-faint)", "#b4b0a7 · dividers, placeholders"],
-    ["accent", "var(--color-accent)", "#2f4f96 · primary action, active field"],
-  ];
   return (
     <section>
       <h2 className="font-hand text-3xl font-bold">Palette</h2>
-      <div className="mt-4 flex flex-wrap gap-8">
-        {swatches.map(([name, color, note]) => (
-          <Swatch key={name} color={color}>
-            <span className="font-hand text-lg">{name}</span>
-            <span className="block text-xs text-ink-soft">{note}</span>
-          </Swatch>
+      <div className="mt-4 space-y-8">
+        {palette.map(({ group, swatches }) => (
+          <div key={group}>
+            <h3 className="font-hand text-xl text-ink-soft">{group}</h3>
+            <div className="mt-2 flex flex-wrap gap-6">
+              {swatches.map(([name, hex, use]) => (
+                <Swatch key={name} color={`var(--color-${name})`}>
+                  <span className="font-hand text-lg">{name.replace("crayon-", "")}</span>
+                  <span className="block text-xs text-ink-soft">
+                    {[hex, use].filter(Boolean).join(" · ")}
+                  </span>
+                </Swatch>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
     </section>
@@ -212,11 +328,11 @@ function Palette() {
 function Swatch({ color, children }: { color: string; children: ReactNode }) {
   const seed = useSeed();
   return (
-    <div className="w-36">
-      <div className="relative h-16">
-        <RoughLayer shape={{ kind: "rect" }} seed={seed} fill={color} fillStyle="hachure" hachureGap={4} strokeWidth={1.4} />
+    <div className="w-28">
+      <div className="relative h-12">
+        <RoughLayer shape={{ kind: "rect" }} seed={seed} fill={color} fillStyle="solid" strokeWidth={1.4} />
       </div>
-      <div className="mt-2">{children}</div>
+      <div className="mt-1.5">{children}</div>
     </div>
   );
 }

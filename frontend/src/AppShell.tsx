@@ -1,4 +1,5 @@
 import { Link, NavLink, Outlet } from "react-router";
+import { Wordmark } from "./ui";
 import { RoughLayer, useSeed } from "./ui/rough";
 
 export function AppShell() {
@@ -20,11 +21,9 @@ export function AppShell() {
 }
 
 function Logo() {
-  const seed = useSeed();
   return (
-    <Link to="/groups" className="relative -rotate-2 pb-1 font-hand text-4xl font-bold">
-      split.
-      <RoughLayer shape={{ kind: "underline" }} seed={seed} strokeWidth={2} roughness={2} />
+    <Link to="/groups" aria-label="Esep home" className="pb-1">
+      <Wordmark />
     </Link>
   );
 }

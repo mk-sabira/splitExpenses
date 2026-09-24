@@ -16,7 +16,8 @@ export type Shape =
   | { kind: "underline" }
   | { kind: "hline" }
   | { kind: "check" }
-  | { kind: "arrow" };
+  | { kind: "arrow" }
+  | { kind: "marker" }; // a highlighter swipe across the lower part of the box
 
 export interface RoughStyle {
   stroke?: string;
@@ -27,6 +28,7 @@ export interface RoughStyle {
   fillStyle?: "hachure" | "solid" | "zigzag" | "cross-hatch" | "dots";
   hachureGap?: number;
   hachureAngle?: number;
+  fillWeight?: number; // hachure line width
 }
 
 // Stable positive 31-bit seed from any string (FNV-1a).
@@ -70,6 +72,13 @@ function draw(shape: Shape, w: number, h: number, o: Options): Drawable[] {
       return [generator.line(0, h / 2, w, h / 2, o)];
     case "check":
       return [generator.linearPath([[w * 0.15, h * 0.55], [w * 0.42, h * 0.85], [w * 0.95, h * 0.05]], o)];
+    case "marker":
+      return [
+        generator.polygon(
+          [[-3, h * 0.42], [w + 2, h * 0.3], [w + 4, h * 0.92], [-1, h * 1.02]],
+          { ...o, stroke: "none", fillStyle: o.fillStyle ?? "solid" },
+        ),
+      ];
     case "arrow": {
       const y = h / 2;
       const head = Math.min(9, w / 3);
