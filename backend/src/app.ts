@@ -2,6 +2,8 @@ import cors from "cors";
 import express from "express";
 import { authRouter } from "./auth/routes";
 import { config } from "./config";
+import { expensesRouter } from "./expenses/routes";
+import { balancesRouter } from "./ledger/routes";
 import { errorHandler, HttpError } from "./lib/errors";
 
 export function createApp() {
@@ -13,6 +15,8 @@ export function createApp() {
     res.json({ ok: true });
   });
   app.use("/api/auth", authRouter);
+  app.use("/api/groups/:groupId/expenses", expensesRouter);
+  app.use("/api/groups/:groupId/balances", balancesRouter);
 
   app.use((_req, _res) => {
     throw new HttpError(404, "Not found");

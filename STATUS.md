@@ -12,6 +12,7 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
 | 2026-09-23 20:08 | Schema approved. Open questions resolved (reminder unit, closed-group rules, leaving a group, rounding) |
 | 2026-09-23 20:11 | Milestone 1: docker-compose Postgres, Prisma schema, init migration applied |
 | 2026-09-24 09:21 | Milestone 2: Express app skeleton, auth (register, login, JWT, `/me`), first automated tests |
+| 2026-09-24 09:35 | Milestone 3: expense CRUD with EQUAL / SHARES / EXACT splits, largest-remainder rounding, balances endpoint, invariant tests |
 
 ## Works
 - `docker compose up -d` starts PostgreSQL 16. The data volume persists between restarts.
@@ -20,24 +21,36 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
 - Express 5 API with a central error handler: `400` for validation errors and malformed JSON, `404` for unknown routes.
 - Auth (see D14): `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`. Emails are trimmed and lowercased. The password hash is never returned.
 - `requireAuth` middleware for protected routes (Bearer JWT → `req.userId`).
-- `npm test`: 10 auth tests (Vitest + Supertest) against the local database. Each run cleans up its own rows.
+- Expenses: `GET/POST /api/groups/:groupId/expenses`, `GET/PUT/DELETE /api/groups/:groupId/expenses/:expenseId`.
+  - EQUAL, SHARES and EXACT splits. Largest-remainder rounding with ties broken by join order (D5). EXACT amounts must add up exactly.
+  - Every write takes the group row lock, bumps `ledgerVersion` and updates `owingSince` in the same transaction (D4, D7).
+  - Optimistic lock on edits: a stale `version` gets `409` (D10). Deletes are soft deletes with activity snapshots (D9). Closed groups block expense changes (D8).
+- Balances: `GET /api/groups/:groupId/balances`, derived from expenses and confirmed repayments (D3).
+- `npm test`: 51 tests (Vitest + Supertest) against the local database. Each file cleans up its own rows. They include:
+  - 20,000 random splits that must sum exactly and round fairly;
+  - 80 random create/edit/delete steps with repayments, checking balances after every step;
+  - concurrency tests;
+  - a create → repay → edit → delete scenario.
+- `npm run typecheck` covers `src` and `tests`.
 
 ## Partial
-- Nothing yet.
+- Groups and payments have database tables and are used by the expense code, but have no API yet. Tests create them directly in the database.
+- Expense writes record `Activity` rows, but there's no feed endpoint yet.
+- The expense list isn't paginated.
 
 ## Not done yet (planned)
 - Groups: create, invite by link or email, group currency, settings
-- Expense CRUD with the three split types and the rounding rule
-- Balances, per group and combined per currency
+- Balances combined per currency across groups (per-group balances are done)
 - Minimum-transfer settlement algorithm
-- Repayments with recipient confirmation
+- Repayments API with recipient confirmation (balances already count confirmed repayments)
 - Activity feed
 - Real-time sync (Socket.io)
 - Notifications when an expense involving you is added or edited
+- Receipt upload for expenses
 - Debtor reminders (interval job)
 - Closing and reopening a group, with the summary email
 - Frontend (React + TypeScript + Tailwind)
-- Automated tests for the correctness rules
+- Automated tests for settlement, repayments and reminders (expense and balance invariants are covered)
 
 ## Deliberately out of scope
 - Real email delivery: emails are logged to the console and stored in `EmailOutbox`.
