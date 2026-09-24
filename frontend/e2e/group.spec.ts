@@ -52,8 +52,8 @@ test("repaying: propose from the plan, the recipient confirms, both are settled"
   await region(bob, "To settle up").getByRole("button", { name: "I paid this" }).click();
   const form = region(bob, "Record a repayment");
   await expect(form.getByLabel("You paid")).toHaveValue(a.me.id);
-  await expect(form.getByLabel("Amount")).toHaveValue("20.00");
-  await expect(form.getByLabel("Amount")).toBeFocused();
+  await expect(form.getByLabel("Amount", { exact: true })).toHaveValue("20.00");
+  await expect(form.getByLabel("Amount", { exact: true })).toBeFocused();
   await form.getByLabel("Note (optional)").fill("Cash");
   await form.getByRole("button", { name: "Record it" }).click();
   await expect(form).toHaveCount(0);
@@ -99,12 +99,12 @@ test("the repayment form shows the server's limit when you overpay", async ({ br
   await open(bob, g.id);
   await bob.getByRole("button", { name: "Record a repayment" }).click();
   const form = region(bob, "Record a repayment");
-  await form.getByLabel("Amount").fill("25");
+  await form.getByLabel("Amount", { exact: true }).fill("25");
   await form.getByRole("button", { name: "Record it" }).click();
   await expect(form.getByRole("alert")).toContainText("That's more than you owe (€20.00)");
-  await form.getByLabel("Amount").fill("12.345");
+  await form.getByLabel("Amount", { exact: true }).fill("12.345");
   await form.getByRole("button", { name: "Record it" }).click();
-  await expect(form.getByLabel("Amount")).toHaveAttribute("aria-invalid", "true");
+  await expect(form.getByLabel("Amount", { exact: true })).toHaveAttribute("aria-invalid", "true");
 });
 
 test("only the owner can close; everyone sees it closed, live", async ({ browser }) => {
@@ -164,7 +164,7 @@ test("without a socket connection the page still loads and updates over REST", a
   await expect(bob.getByRole("status").filter({ hasText: "offline" })).toBeVisible();
 
   await bob.getByRole("button", { name: "Record a repayment" }).click();
-  await region(bob, "Record a repayment").getByLabel("Amount").fill("5");
+  await region(bob, "Record a repayment").getByLabel("Amount", { exact: true }).fill("5");
   await region(bob, "Record a repayment").getByRole("button", { name: "Record it" }).click();
   await expect(region(bob, "Waiting for confirmation")).toContainText("You say you paid Alice €5.00");
 });

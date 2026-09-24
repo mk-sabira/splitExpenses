@@ -134,3 +134,11 @@ React 19 + TypeScript + Vite, Tailwind CSS 4 (via its Vite plugin, no config fil
 - **Avatars.** Within a group, colors follow join order, so the first six members never share a color. Elsewhere they come from a hash of the user id. The initial is drawn with CSS, so it isn't part of the page text.
 - **Invite link.** It's built from the page's own origin rather than the backend's `APP_URL`, so it's right wherever the frontend is served.
 - **Close/reopen.** Owner only. Closing asks for confirmation first, because it emails everyone a summary.
+
+### D27 — Add-expense form and split preview — 2026-09-24 15:50
+- **Live preview.** While you type, each person's share appears next to their name, using a client-side copy of the server's split rules (largest remainder, ties by join order, D5). A unit test imports the backend's `resolveSplit` directly and checks the copy against it on 5,000 random EQUAL and SHARES splits, including totals up to the 2³¹ limit, so the two can't drift apart unnoticed. The server stays the authority: the preview is never sent, only the split input.
+- **Split modes.** Equally (tick who's in, with "everyone" / "no one" shortcuts), by shares (whole numbers from 0 to 1000; 0 leaves someone out), or exact amounts (blank means not in the split). Exact mode keeps a running "€5.00 left to assign" / "€5.00 too much" / "✓ adds up" line, and saving is blocked until the parts match the total.
+- **Validation.** Everything the client can check is checked before sending: description, amount (via `parseAmount`, never floats), shares and parts, at least one person. Server field errors land on the matching field. Other server errors appear in a notice.
+- **Defaults.** Paid by you, today's date in your own time zone, food & drink, everyone in. Category labels are friendlier than the enum names ("Fun" for `ENTERTAINMENT`, "Bills" for `UTILITIES`).
+- **Placement.** "+ Add an expense" is the page's primary action, and "Record a repayment" became a regular button beside your balance. In a closed group the add button is replaced by a note (D8).
+- **Built for editing too.** The form takes an optional existing expense and sends `PUT` with its `version` (D10). The edit screen will reuse it.

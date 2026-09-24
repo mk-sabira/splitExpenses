@@ -3,8 +3,9 @@ import { Link, useParams } from "react-router";
 import { useUser } from "../auth/AuthContext";
 import { errorMessage } from "../lib/api";
 import type { Transfer } from "../lib/types";
-import { Card, Loading, Notice } from "../ui";
+import { Button, Card, Loading, Notice } from "../ui";
 import { ActivityFeed } from "./ActivityFeed";
+import { ExpenseForm } from "./ExpenseForm";
 import { GroupContext, type GroupCtx } from "./context";
 import { GroupHeader } from "./GroupHeader";
 import { MembersCard } from "./MembersCard";
@@ -17,6 +18,7 @@ export function GroupPage() {
   const { state, connection, changeCount, afterChange } = useGroupLive(groupId);
   // null: closed; {}: open with nothing prefilled; a transfer: prefilled from the plan.
   const [repay, setRepay] = useState<Partial<Transfer> | null>(null);
+  const [adding, setAdding] = useState(false);
 
   const ctx = useMemo<GroupCtx | null>(() => {
     if (state.status !== "ok") return null;
@@ -60,6 +62,15 @@ export function GroupPage() {
         <GroupHeader detail={detail} live={snapshot.group} connection={connection} />
         <div className="grid items-start gap-x-10 gap-y-10 md:grid-cols-12">
           <div className="space-y-10 md:col-span-7">
+            {ctx.closed ? (
+              <p className="font-hand text-xl text-ink-soft">This group is closed, so no new expenses. Repayments still work.</p>
+            ) : adding ? (
+              <ExpenseForm onDone={() => setAdding(false)} />
+            ) : (
+              <Button variant="primary" onClick={() => setAdding(true)} className="text-xl">
+                + Add an expense
+              </Button>
+            )}
             <YouCard balances={snapshot.balances} pending={snapshot.pendingPayments} onRepay={() => setRepay({})} />
             {repay && (
               <RepayForm

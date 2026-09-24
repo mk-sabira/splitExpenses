@@ -39,7 +39,7 @@ export function YouCard({
       )}
       {net < 0 && sent < -net && (
         <div className="mt-4">
-          <Button variant="primary" onClick={onRepay}>
+          <Button onClick={onRepay}>
             Record a repayment
           </Button>
         </div>
