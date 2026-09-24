@@ -1,9 +1,26 @@
-import { useNavigate } from "react-router";
-import { Arrow, Avatar, Balance, Button, Card, Choice, Highlight, Money, Stamp, TextField, Wordmark, type TapeColor, type Tone } from "../ui";
+import { useState, type FormEvent } from "react";
+import { useNavigate, useSearchParams } from "react-router";
+import { useAuth } from "../auth/AuthContext";
+import { ApiError, errorMessage } from "../lib/api";
+import {
+  Arrow,
+  Avatar,
+  Balance,
+  Button,
+  Card,
+  Choice,
+  Highlight,
+  Money,
+  Notice,
+  Stamp,
+  TextField,
+  Wordmark,
+  type TapeColor,
+  type Tone,
+} from "../ui";
 
 // The logged-out front page: what Esep is, a coloured sample of a group, and
-// the log-in / sign-up form. The form isn't wired to the API yet; that comes
-// with the auth screens.
+// the log-in / sign-up form.
 
 type Mode = "login" | "register";
 
@@ -52,34 +69,98 @@ export function LandingPage({ mode }: { mode: Mode }) {
 
 function AuthCard({ mode }: { mode: Mode }) {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const { login, register } = useAuth();
+  const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fields, setFields] = useState<Record<string, string>>({});
+  const invited = params.get("next")?.match(/^\/(join|invites)\//);
+
+  const set = (key: keyof typeof form) => (e: { target: { value: string } }) =>
+    setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  const switchMode = (m: Mode) => {
+    setError(null);
+    setFields({});
+    navigate({ pathname: m === "login" ? "/login" : "/register", search: params.toString() });
+  };
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    setFields({});
+    try {
+      if (mode === "login") await login(form.email, form.password);
+      else await register(form.name, form.email, form.password);
+      // <RedirectIfAuthenticated> takes it from here.
+    } catch (err) {
+      const f = err instanceof ApiError ? err.fields : {};
+      setFields(f);
+      setError(Object.keys(f).length > 0 ? null : errorMessage(err));
+      setBusy(false);
+    }
+  }
+
   return (
     <Card tilt={0} tape="marker" className="md:sticky md:top-10">
+      {invited && (
+        <p className="mb-3 font-hand text-xl">
+          <Highlight>You've been invited!</Highlight> Log in or sign up to join the group.
+        </p>
+      )}
       <Choice<Mode>
         legend={<span className="sr-only">Log in or sign up</span>}
         value={mode}
-        onChange={(m) => navigate(m === "login" ? "/login" : "/register")}
+        onChange={switchMode}
         options={[
           { value: "login", label: <span className="text-2xl font-bold">log in</span> },
           { value: "register", label: <span className="text-2xl font-bold">sign up</span> },
         ]}
       />
-      <form className="mt-4 space-y-5" onSubmit={(e) => e.preventDefault()}>
-        {mode === "register" && <TextField label="Your name" autoComplete="name" required />}
-        <TextField label="Email" type="email" autoComplete="email" required />
+      <form className="mt-4 space-y-5" onSubmit={submit}>
+        {mode === "register" && (
+          <TextField
+            label="Your name"
+            autoComplete="name"
+            required
+            maxLength={100}
+            value={form.name}
+            onChange={set("name")}
+            error={fields.name}
+          />
+        )}
+        <TextField
+          label="Email"
+          type="email"
+          autoComplete="email"
+          required
+          value={form.email}
+          onChange={set("email")}
+          error={fields.email}
+        />
         <TextField
           label="Password"
           type="password"
           autoComplete={mode === "login" ? "current-password" : "new-password"}
-          hint={mode === "register" ? "At least 8 characters." : undefined}
           required
+          minLength={mode === "register" ? 8 : undefined}
+          hint={mode === "register" ? "At least 8 characters." : undefined}
+          value={form.password}
+          onChange={set("password")}
+          error={fields.password}
         />
-        <Button variant="primary" type="submit" className="w-full">
-          {mode === "login" ? "Log in" : "Create my account"}
+        {error && <Notice>{error}</Notice>}
+        <Button variant="primary" type="submit" className="w-full" disabled={busy}>
+          {busy ? (mode === "login" ? "Logging in…" : "Creating your account…") : mode === "login" ? "Log in" : "Create my account"}
         </Button>
       </form>
-      <p className="mt-5 text-sm text-ink-soft">
-        Got an invite link? Open it after logging in and you'll join the group straight away.
-      </p>
+      {!invited && (
+        <p className="mt-5 text-sm text-ink-soft">
+          Got an invite link? Open it and you'll come back to the group after logging in.
+        </p>
+      )}
     </Card>
   );
 }

@@ -26,7 +26,7 @@ cd frontend
 npm install
 npm run dev                     # http://localhost:5173, proxies /api and /socket.io to :3000
 ```
-Set `API_URL` if the backend isn't on `http://localhost:3000`. The style guide with every base component is at http://localhost:5173/design (dev only). See D20 and D21 in `DECISIONS.md`.
+Set `API_URL` if the backend isn't on `http://localhost:3000`. `npm run e2e` runs the end-to-end tests in your installed Chrome. It starts its own backend on port 3100 and Vite on port 5199, and needs the database running. The style guide with every base component is at http://localhost:5173/design (dev only). See D20 and D21 in `DECISIONS.md`.
 
 ## Real-time sync: manual testing
 

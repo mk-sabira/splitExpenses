@@ -7,3 +7,5 @@ export { SelectField, TextField } from "./Field";
 export { Arrow, Divider, Highlight, Stamp } from "./Marks";
 export { Balance, Money } from "./Money";
 export { Wordmark } from "./Wordmark";
+export { Loading } from "./Loading";
+export { Notice } from "./Notice";
