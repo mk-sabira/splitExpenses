@@ -146,7 +146,20 @@ describe("joining with the shareable link", () => {
     const g = await newGroup(alice, [], { name: "Ski trip" });
     const res = await request(app).get(`/api/invites/link/${g.inviteToken}`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ groupName: "Ski trip", memberCount: 1, closed: false });
+    expect(res.body).toEqual({ groupName: "Ski trip", currency: "EUR", memberCount: 1, closed: false, alreadyMember: false });
+  });
+
+  it("tells a logged-in member they're already in, with the group's id; nobody else gets the id", async () => {
+    const g = await newGroup(alice, [bob]);
+    const preview = (auth?: Record<string, string>) => request(app).get(`/api/invites/link/${g.inviteToken}`).set(auth ?? {});
+    expect((await preview(bob.auth)).body).toMatchObject({ alreadyMember: true, groupId: g.id });
+    const outsider = (await preview(carol.auth)).body;
+    expect(outsider.alreadyMember).toBe(false);
+    expect(outsider).not.toHaveProperty("groupId");
+    // A bad token is treated as anonymous, not an error.
+    const bad = await preview({ authorization: "Bearer nonsense" });
+    expect(bad.status).toBe(200);
+    expect(bad.body).not.toHaveProperty("groupId");
   });
 
   it("adds the user as a member after the existing ones, and is idempotent", async () => {

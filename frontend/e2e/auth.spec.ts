@@ -44,19 +44,18 @@ test("a logged-out visitor returns to the page they wanted after logging in", as
   const { email } = await register(page, "Dana");
   await page.getByRole("button", { name: "log out" }).click();
 
-  await page.goto("/join/some-invite-token");
-  await expect(page).toHaveURL(/\/login\?next=%2Fjoin%2Fsome-invite-token/);
-  await expect(page.getByText("You've been invited!")).toBeVisible();
+  await page.goto("/help");
+  await expect(page).toHaveURL(/\/login\?next=%2Fhelp/);
 
   // Switching to sign up keeps where they were going.
   await choose(page, "sign up");
-  await expect(page).toHaveURL(/\/register\?next=%2Fjoin%2Fsome-invite-token/);
+  await expect(page).toHaveURL(/\/register\?next=%2Fhelp/);
   await choose(page, "log in");
 
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Log in" }).click();
-  await expect(page).toHaveURL(/\/join\/some-invite-token$/);
+  await expect(page).toHaveURL(/\/help$/);
 });
 
 test("?next= can't send people to another site", async ({ page }) => {

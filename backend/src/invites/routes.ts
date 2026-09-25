@@ -1,5 +1,5 @@
 import { Router, type Request } from "express";
-import { requireAuth } from "../auth/middleware";
+import { optionalAuth, requireAuth } from "../auth/middleware";
 import { getGroup } from "../groups/service";
 import { acceptEmailInvite, joinByLink, previewEmailInvite, previewLink } from "./service";
 
@@ -10,8 +10,8 @@ const token = (req: Request) => req.params.token as string;
 export const invitesRouter = Router();
 
 // Shareable group link: /join/:token in the frontend.
-invitesRouter.get("/link/:token", async (req, res) => {
-  res.json(await previewLink(token(req)));
+invitesRouter.get("/link/:token", optionalAuth, async (req, res) => {
+  res.json(await previewLink(token(req), req.userId));
 });
 
 invitesRouter.post("/link/:token/join", requireAuth, async (req, res) => {

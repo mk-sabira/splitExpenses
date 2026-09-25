@@ -5,6 +5,7 @@ import { GroupPage } from "./group/GroupPage";
 import { DesignPage } from "./pages/DesignPage";
 import { GroupsPage } from "./pages/GroupsPage";
 import { HelpPage } from "./pages/HelpPage";
+import { JoinPage } from "./pages/JoinPage";
 import { LandingPage } from "./pages/LandingPage";
 import { NotFound, Placeholder } from "./pages/Placeholder";
 
@@ -14,8 +15,15 @@ export const router = createBrowserRouter([
   // The front page has its own layout: the big wordmark replaces the app header.
   { path: "login", element: <RedirectIfAuthenticated><LandingPage mode="login" /></RedirectIfAuthenticated> },
   { path: "register", element: <RedirectIfAuthenticated><LandingPage mode="register" /></RedirectIfAuthenticated> },
-  // Living style guide for reviewing the design system; dev builds only, no login needed.
-  ...(import.meta.env.DEV ? [{ element: <AppShell />, children: [{ path: "design", element: <DesignPage /> }] }] : []),
+  // Public pages inside the app layout: the style guide (dev builds only), and
+  // the join link, which shows the group before asking anyone to log in.
+  {
+    element: <AppShell />,
+    children: [
+      { path: "join/:token", element: <JoinPage /> },
+      ...(import.meta.env.DEV ? [{ path: "design", element: <DesignPage /> }] : []),
+    ],
+  },
   {
     element: (
       <RequireAuth>
@@ -28,7 +36,6 @@ export const router = createBrowserRouter([
       { path: "groups/:groupId", element: <GroupPage /> },
       { path: "help", element: <HelpPage /> },
       { path: "groups/:groupId/expenses/:expenseId", element: <GroupPage /> },
-      { path: "join/:token", element: <Placeholder title="Join a group" /> },
       { path: "invites/:token", element: <Placeholder title="Accept an invite" /> },
       { path: "*", element: <NotFound /> },
     ],

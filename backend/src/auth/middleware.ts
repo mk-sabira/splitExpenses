@@ -10,12 +10,22 @@ declare global {
   }
 }
 
+function userFrom(header: string | undefined) {
+  const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
+  return token ? verifyToken(token) : null;
+}
+
 // Requires "Authorization: Bearer <jwt>" and sets req.userId.
 export const requireAuth: RequestHandler = (req, _res, next) => {
-  const header = req.headers.authorization;
-  const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
-  const userId = token ? verifyToken(token) : null;
+  const userId = userFrom(req.headers.authorization);
   if (!userId) throw new HttpError(401, "Authentication required");
   req.userId = userId;
+  next();
+};
+
+// For public endpoints that say a little more to a logged-in caller: sets
+// req.userId when the token is valid, and otherwise carries on anonymously.
+export const optionalAuth: RequestHandler = (req, _res, next) => {
+  req.userId = userFrom(req.headers.authorization) ?? undefined;
   next();
 };

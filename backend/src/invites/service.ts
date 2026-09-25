@@ -113,15 +113,28 @@ export async function acceptEmailInvite(token: string, userId: string) {
 async function findGroupByLink(inviteToken: string) {
   const group = await prisma.group.findUnique({
     where: { inviteToken },
-    select: { id: true, name: true, status: true, _count: { select: { members: true } } },
+    select: { id: true, name: true, currency: true, status: true, _count: { select: { members: true } } },
   });
   if (!group) throw new HttpError(404, "This invite link is invalid or has been replaced");
   return group;
 }
 
-export async function previewLink(inviteToken: string) {
+// Public, so the join page can show the group before anyone logs in (D16).
+// A logged-in caller who is already a member also gets the group's id, so the
+// page can take them straight in.
+export async function previewLink(inviteToken: string, userId?: string) {
   const group = await findGroupByLink(inviteToken);
-  return { groupName: group.name, memberCount: group._count.members, closed: group.status === "CLOSED" };
+  const member = userId
+    ? (await prisma.groupMember.count({ where: { groupId: group.id, userId } })) > 0
+    : false;
+  return {
+    groupName: group.name,
+    currency: group.currency,
+    memberCount: group._count.members,
+    closed: group.status === "CLOSED",
+    alreadyMember: member,
+    ...(member && { groupId: group.id }),
+  };
 }
 
 export async function joinByLink(inviteToken: string, userId: string) {
