@@ -116,9 +116,9 @@ function useMyBalances(groups: GroupSummary[]) {
     const ctrl = new AbortController();
     for (const g of groups) {
       api<{ balances: MemberBalance[] }>(`/groups/${g.id}/balances`, { signal: ctrl.signal })
-        .then(({ balances }) =>
-          setNet((n) => ({ ...n, [g.id]: balances.find((b) => b.userId === me.id)?.net ?? 0 })),
-        )
+        .then(({ balances }) => {
+          if (!ctrl.signal.aborted) setNet((n) => ({ ...n, [g.id]: balances.find((b) => b.userId === me.id)?.net ?? 0 }));
+        })
         .catch((err) => {
           if ((err as Error).name !== "AbortError") setNet((n) => ({ ...n, [g.id]: null }));
         });

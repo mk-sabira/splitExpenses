@@ -16,9 +16,12 @@ export function useApi<T>(path: string | null) {
     if (path === null) return;
     const ctrl = new AbortController();
     api<T>(path, { signal: ctrl.signal })
-      .then((data) => setResult({ status: "ok", data }))
+      .then((data) => {
+        // A superseded request never overwrites the newer one's result.
+        if (!ctrl.signal.aborted) setResult({ status: "ok", data });
+      })
       .catch((error) => {
-        if ((error as Error).name !== "AbortError") setResult({ status: "error", error });
+        if (!ctrl.signal.aborted && (error as Error).name !== "AbortError") setResult({ status: "error", error });
       });
     return () => ctrl.abort();
   }, [path, tick]);

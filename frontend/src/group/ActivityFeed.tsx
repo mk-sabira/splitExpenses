@@ -24,6 +24,7 @@ export function ActivityFeed({ changeCount }: { changeCount: number }) {
     const ctrl = new AbortController();
     api<Page>(`/groups/${groupId}/activity?limit=${PAGE}`, { signal: ctrl.signal })
       .then((page) => {
+        if (ctrl.signal.aborted) return; // a newer load is on its way
         setError(null);
         setFeed((old) => {
           const last = page.activities.at(-1);

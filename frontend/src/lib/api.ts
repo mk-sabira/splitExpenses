@@ -59,7 +59,15 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
     throw new ApiError(0, "Can't reach the server. Check your connection and try again.");
   }
 
-  const data = res.status === 204 ? null : await res.json().catch(() => null);
+  // A cancelled request can also fail while the body is being read: that must
+  // still reject as an abort, not look like a successful empty response.
+  const data =
+    res.status === 204
+      ? null
+      : await res.json().catch((err: Error) => {
+          if (err.name === "AbortError") throw err;
+          return null;
+        });
   if (!res.ok) {
     if (res.status === 401 && token) onUnauthorized();
     const fields: Record<string, string> = {};

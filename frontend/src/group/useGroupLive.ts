@@ -33,6 +33,9 @@ export function useGroupLive(groupId: string) {
   const detailRef = useRef<GroupDetail | null>(null);
   const snapshotRef = useRef<GroupUpdate | null>(null);
   const socketRef = useRef<Socket | null>(null);
+  // In the group's room, so changes will be pushed. Being connected isn't enough:
+  // the join can fail or still be on its way.
+  const joinedRef = useRef(false);
 
   const publish = useCallback(() => {
     const detail = detailRef.current;
@@ -100,11 +103,13 @@ export function useGroupLive(groupId: string) {
 
     const socket = io({ auth: { token: tokenStore.get() }, transports: ["websocket", "polling"] });
     socketRef.current = socket;
+    joinedRef.current = false;
     // "connect" also fires after every reconnect, and rooms don't survive a
     // reconnect, so join again each time; the ack brings us up to date.
     socket.on("connect", () => {
       socket.emit("group:join", groupId, (res: { ok: true; update: GroupUpdate } | { ok: false; error: string }) => {
         if (res.ok) {
+          joinedRef.current = true;
           setConnection("live");
           applySnapshot(res.update, "socket");
         } else if (res.error === "Group not found") {
@@ -117,8 +122,12 @@ export function useGroupLive(groupId: string) {
     socket.on("group:update", (update: GroupUpdate) => {
       if (update.groupId === groupId) applySnapshot(update, "socket");
     });
-    socket.on("disconnect", () => setConnection("offline"));
+    socket.on("disconnect", () => {
+      joinedRef.current = false;
+      setConnection("offline");
+    });
     socket.on("connect_error", (err) => {
+      joinedRef.current = false;
       setConnection("offline");
       if (err.message === "Authentication required") logout();
       else void refreshFromRest("fallback").catch(() => {});
@@ -138,10 +147,11 @@ export function useGroupLive(groupId: string) {
     };
   }, [groupId, loadDetail, applySnapshot, refreshFromRest, logout]);
 
-  // After a change made on this screen. The socket delivers it when live;
-  // otherwise read it back over REST.
+  // After a change made on this screen. The socket delivers it once we're in the
+  // group's room; otherwise read it back over REST (which also bumps changeCount,
+  // so the activity feed reloads too).
   const afterChange = useCallback(async () => {
-    if (!socketRef.current?.connected) await refreshFromRest().catch(() => {});
+    if (!joinedRef.current) await refreshFromRest().catch(() => {});
     else void loadDetail(); // cheap, and keeps e.g. currencyLocked current
   }, [refreshFromRest, loadDetail]);
 

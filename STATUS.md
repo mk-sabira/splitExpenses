@@ -71,6 +71,21 @@ It's updated at each milestone, not only at the end. Times are local (UTC+04:00)
 - No endpoint to revoke a pending email invite or transfer ownership.
 - The expense list isn't paginated.
 
+## Known issue: rare intermittent e2e failures in the live-update path (2026-09-25)
+Seen while running the full frontend e2e suite in parallel (39 tests, one local backend). Before the fixes below it failed **3 times in 10 full runs**. Each time a single test waited 5 s for something that never appeared, and the test took 13–15 s instead of about 3 s. Running the affected test alone (20 repeats) never failed, so load is part of it.
+
+Two failure modes were seen:
+1. **"an expense added alone can be edited to include someone who joins later"** (1 of 10 runs, plus once the day before). The trace showed the whole page replaced by React Router's error screen: `Cannot read properties of null (reading 'expense')` in `ExpenseView`.
+   - **Root cause (found and fixed).** `useApi` cancels a request when it re-fetches, and `ExpenseView` re-fetches twice right after a save. When the cancel landed while the response body was being read, `res.json()` failed with an AbortError. `api()` swallowed that with `.catch(() => null)` and returned `null` as a success, and `useApi` stored it without checking whether the request had been cancelled.
+   - **Fix.** `api()` now rethrows aborts during the body read (unit test in `src/lib/api.test.ts`). `useApi`, the activity feed and the groups list ignore results of superseded requests.
+2. **"equal split: … everyone's balance updates live"** (2 of 10 runs): a balance line never appeared. No trace was kept for these runs, so the cause is **not confirmed**. The same abort race is the likely explanation. The activity feed reloads on every live update and cancels its previous load, and before the fix a cancelled load could resolve as `null` and crash while rendering. That takes down the whole page, balances included. This is an inference, not something seen in a trace.
+
+After the fix: 6 full runs, then 2 more after the safety net below, all passed (8 of 8). That's fewer runs than it took to see the problem at first, so treat it as likely fixed rather than proven.
+
+**Safety net added at the same time.** After a change made on the page, the client used to skip the REST read-back whenever the socket was *connected*. It now does so only once the socket has actually *joined* the group's room. If the join failed (for example the server timed out under load) or hasn't finished, the page reads the new state over REST, and the activity feed reloads with it. Changes made by *other* people while the socket is connected but not joined still wait for the join, and there's no periodic REST poll.
+
+**If it shows up again:** run `npx playwright test --output=<dir>` in a loop so the failing test's trace is kept (a normal run clears the previous one), then check the trace's error snapshot and network log.
+
 ## Not done yet (planned)
 - Balances combined per currency across groups (per-group balances are done)
 - Notifications when an expense involving you is added or edited, and for payment requests and responses (planned as a per-user Socket.io room plus stored `Notification` rows)
