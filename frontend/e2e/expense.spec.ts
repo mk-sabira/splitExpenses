@@ -122,3 +122,41 @@ test("a closed group has no add button", async ({ browser }) => {
   await expect(alice.getByText("This group is closed, so no new expenses.")).toBeVisible();
   await expect(alice.getByRole("button", { name: "+ Add an expense" })).toHaveCount(0);
 });
+
+test("an expense added alone can be edited to include someone who joins later", async ({ browser }) => {
+  const alice = await (await browser.newContext()).newPage();
+  await register(alice, "Alice");
+  const a = await apiAs(alice);
+  const { group } = await a.post("/groups", { name: "Solo", currency: "EUR" });
+  await alice.goto(`/groups/${group.id}`);
+  await expect(alice.getByRole("status").filter({ hasText: "live" })).toHaveText(/^live$/);
+
+  // Alone: the button works, with a hint about who it will be split between.
+  await expect(alice.getByText("This will be split only among current members")).toBeVisible();
+  await start(alice, "Rent", "100");
+  await form(alice).getByRole("button", { name: "Add expense" }).click();
+  await expect(form(alice)).toHaveCount(0);
+
+  const bob = await (await browser.newContext()).newPage();
+  await register(bob, "Bob");
+  await (await apiAs(bob)).post(`/invites/link/${group.inviteToken}/join`);
+  await expect(alice.getByText("This will be split only among current members")).toHaveCount(0);
+
+  // Open the expense from the feed; Bob isn't in it yet.
+  await alice.getByRole("region", { name: "What happened" }).getByRole("link", { name: "Rent" }).click();
+  await expect(alice).toHaveURL(/\/expenses\//);
+  await expect(alice.getByRole("list", { name: "Split" })).not.toContainText("Bob");
+  await expect(alice.getByText("Not in this split: Bob.")).toBeVisible();
+
+  await alice.getByRole("button", { name: "Edit" }).click();
+  const edit = alice.getByRole("region", { name: "Edit expense" });
+  const bobRow = edit.getByRole("list", { name: "Who's in the split" }).getByRole("listitem").filter({ hasText: "Bob" });
+  await expect(bobRow).toContainText("—");
+  await bobRow.getByText("Bob").click(); // tick Bob
+  await expect(bobRow).toContainText("€50.00");
+  await edit.getByRole("button", { name: "Save changes" }).click();
+
+  await expect(alice.getByRole("list", { name: "Split" })).toContainText(/Bob\s*€50\.00/);
+  await expect(alice.getByText(/you're owed\s*€50\.00/)).toBeVisible();
+  await expect(alice.getByRole("region", { name: "What happened" })).toContainText("Alice edited Rent");
+});

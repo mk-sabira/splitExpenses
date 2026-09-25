@@ -27,7 +27,7 @@ export const router = createBrowserRouter([
       { path: "groups", element: <GroupsPage /> },
       { path: "groups/:groupId", element: <GroupPage /> },
       { path: "help", element: <HelpPage /> },
-      { path: "groups/:groupId/expenses/:expenseId", element: <Placeholder title="Expense" /> },
+      { path: "groups/:groupId/expenses/:expenseId", element: <GroupPage /> },
       { path: "join/:token", element: <Placeholder title="Join a group" /> },
       { path: "invites/:token", element: <Placeholder title="Accept an invite" /> },
       { path: "*", element: <NotFound /> },

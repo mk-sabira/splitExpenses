@@ -51,7 +51,7 @@ export function Button({
         <RoughLayer
           shape={{ kind: "rect" }}
           seed={s}
-          stroke={variant === "danger" ? "var(--color-owe)" : undefined}
+          stroke={variant === "danger" ? "var(--color-owe)" : "var(--color-ink)"}
           strokeWidth={1.5}
           roughness={1.4}
           fill="var(--color-paper)"

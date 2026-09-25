@@ -6,6 +6,7 @@ import type { Transfer } from "../lib/types";
 import { Button, Card, Loading, Notice } from "../ui";
 import { ActivityFeed } from "./ActivityFeed";
 import { ExpenseForm } from "./ExpenseForm";
+import { ExpenseView } from "./ExpenseView";
 import { GroupContext, type GroupCtx } from "./context";
 import { GroupHeader } from "./GroupHeader";
 import { MembersPanel } from "./MembersPanel";
@@ -13,7 +14,8 @@ import { BalanceCard, PendingCard, RepayForm } from "./MoneyCards";
 import { useGroupLive } from "./useGroupLive";
 
 export function GroupPage() {
-  const { groupId } = useParams() as { groupId: string };
+  // Also serves /groups/:groupId/expenses/:expenseId: the expense opens above the balances.
+  const { groupId, expenseId } = useParams() as { groupId: string; expenseId?: string };
   const me = useUser();
   const { state, connection, changeCount, afterChange } = useGroupLive(groupId);
   // null: closed; {}: open with nothing prefilled; a transfer: prefilled from the plan.
@@ -67,7 +69,9 @@ export function GroupPage() {
           <GroupHeader detail={detail} live={snapshot.group} connection={connection} />
           <MembersPanel detail={detail} closed={ctx.closed} />
         </div>
-        {ctx.closed ? (
+        {expenseId ? (
+          <ExpenseView key={expenseId} expenseId={expenseId} changeCount={changeCount} />
+        ) : ctx.closed ? (
           <p className="font-hand text-xl text-ink-soft">This group is closed, so no new expenses. Repayments still work.</p>
         ) : adding ? (
           <div className="max-w-2xl">
@@ -79,6 +83,11 @@ export function GroupPage() {
             <Button variant="primary" onClick={() => setAdding(true)} className="text-xl">
               + Add an expense
             </Button>
+            {detail.members.length === 1 && (
+              <p className="mt-3 max-w-xl text-sm text-ink-soft">
+                This will be split only among current members — invite others first if you want them included.
+              </p>
+            )}
           </div>
         )}
         <div className="grid items-start gap-x-10 gap-y-10 md:grid-cols-12">
