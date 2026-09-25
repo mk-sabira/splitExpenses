@@ -1,30 +1,39 @@
-import { useEffect, useRef, useState, type SubmitEvent } from "react";
+import { useEffect, useId, useRef, useState, type SubmitEvent } from "react";
 import { api } from "../lib/api";
 import { formatMoney, parseAmount, toInput } from "../lib/money";
 import { timeAgo } from "../lib/time";
 import type { MemberBalance, Payment, Transfer } from "../lib/types";
 import { useAction } from "../lib/useAction";
-import { Arrow, Balance, Button, Card, Highlight, Money, Notice, SelectField, Stamp, TextField } from "../ui";
+import { Arrow, Balance, Button, Card, Divider, Highlight, Money, Notice, SelectField, Stamp, TextField } from "../ui";
 import { MemberAvatar, useGroup } from "./context";
 
-// Your own position in the group, with the one action that matters most.
-export function YouCard({
+// Where the group stands, in one card: your own position first (with the one
+// action that matters most), then everyone's balance and the fewest transfers
+// that settle them (backend D6). When nobody owes anything, it says just that.
+export function BalanceCard({
   balances,
   pending,
+  transfers,
+  method,
   onRepay,
+  onPaid,
 }: {
   balances: MemberBalance[];
   pending: Payment[];
+  transfers: Transfer[];
+  method: "exact" | "greedy";
   onRepay: () => void;
+  onPaid: (t: Transfer) => void;
 }) {
-  const { me, currency } = useGroup();
+  const { me, currency, name } = useGroup();
   const net = balances.find((b) => b.userId === me)?.net ?? 0;
   const sent = pending.filter((p) => p.fromUserId === me).reduce((sum, p) => sum + p.amount, 0);
+  const everyoneSettled = transfers.length === 0 && balances.every((b) => b.net === 0);
   return (
-    <Card tone={net < 0 ? "blush" : net > 0 ? "mint" : "paper"} tape="marker" tilt={-0.6}>
+    <Card label="Balances" tone={net < 0 ? "blush" : net > 0 ? "mint" : "paper"} tape="marker" tilt={-0.4}>
       {net === 0 ? (
         <p className="font-hand text-4xl font-bold">
-          you're <Highlight>all settled up</Highlight>
+          you're <Highlight>{everyoneSettled ? "all settled up" : "settled up"}</Highlight>
         </p>
       ) : (
         <p className={`font-hand text-4xl font-bold ${net < 0 ? "text-owe" : "text-owed"}`}>
@@ -39,37 +48,34 @@ export function YouCard({
       )}
       {net < 0 && sent < -net && (
         <div className="mt-4">
-          <Button onClick={onRepay}>
-            Record a repayment
-          </Button>
+          <Button onClick={onRepay}>Record a repayment</Button>
         </div>
+      )}
+
+      {!everyoneSettled && (
+        <>
+          <Divider />
+          <ul className="space-y-2.5" aria-label="Everyone's balance">
+            {balances.map((b) => (
+              <li key={b.userId} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <MemberAvatar userId={b.userId} />
+                <span className="font-medium">
+                  {name(b.userId)} {b.userId === me && <span className="font-hand text-ink-soft">(you)</span>}
+                </span>
+                <Balance net={b.net} currency={currency} className="ml-auto" />
+              </li>
+            ))}
+          </ul>
+          {transfers.length > 0 && <SettleUp transfers={transfers} method={method} onPaid={onPaid} />}
+        </>
       )}
     </Card>
   );
 }
 
-export function BalancesCard({ balances }: { balances: MemberBalance[] }) {
-  const { me, currency, name } = useGroup();
-  return (
-    <Card title="Balances" tone="sticky" tape="blush">
-      <ul className="space-y-2.5">
-        {balances.map((b) => (
-          <li key={b.userId} className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <MemberAvatar userId={b.userId} />
-            <span className="font-medium">
-              {name(b.userId)} {b.userId === me && <span className="font-hand text-ink-soft">(you)</span>}
-            </span>
-            <Balance net={b.net} currency={currency} className="ml-auto" />
-          </li>
-        ))}
-      </ul>
-    </Card>
-  );
-}
-
-// The fewest transfers that settle everyone (backend D6). You can record
-// your own transfers straight from here.
-export function SettleUpCard({
+// The plan, right under the balances it settles. You can record your own
+// transfers straight from here.
+function SettleUp({
   transfers,
   method,
   onPaid,
@@ -79,29 +85,29 @@ export function SettleUpCard({
   onPaid: (t: Transfer) => void;
 }) {
   const { me, currency, name } = useGroup();
+  const titleId = useId();
   return (
-    <Card title="To settle up" tone="paper" tilt={0.5}>
-      {transfers.length === 0 ? (
-        <p className="text-ink-soft">Nobody owes anybody.</p>
-      ) : (
-        <ul className="space-y-3">
-          {transfers.map((t) => (
-            <li key={`${t.fromUserId}-${t.toUserId}`} className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
-              <MemberAvatar userId={t.fromUserId} size={28} />
-              <span className="font-medium">{t.fromUserId === me ? "You" : name(t.fromUserId)}</span>
-              <Arrow color="var(--color-owe)" />
-              <MemberAvatar userId={t.toUserId} size={28} />
-              <span className="font-medium">{t.toUserId === me ? "you" : name(t.toUserId)}</span>
-              <Money amount={t.amount} currency={currency} className="ml-auto" />
-              {t.fromUserId === me && (
-                <Button onClick={() => onPaid(t)} className="text-base">
-                  I paid this
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+    <section aria-labelledby={titleId} className="mt-6">
+      <h3 id={titleId} className="font-hand text-2xl font-bold">
+        To settle up
+      </h3>
+      <ul className="mt-2 space-y-3">
+        {transfers.map((t) => (
+          <li key={`${t.fromUserId}-${t.toUserId}`} className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
+            <MemberAvatar userId={t.fromUserId} size={28} />
+            <span className="font-medium">{t.fromUserId === me ? "You" : name(t.fromUserId)}</span>
+            <Arrow color="var(--color-owe)" />
+            <MemberAvatar userId={t.toUserId} size={28} />
+            <span className="font-medium">{t.toUserId === me ? "you" : name(t.toUserId)}</span>
+            <Money amount={t.amount} currency={currency} className="ml-auto" />
+            {t.fromUserId === me && (
+              <Button onClick={() => onPaid(t)} className="text-base">
+                I paid this
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
       {transfers.length > 1 && (
         <p className="mt-4 text-sm text-ink-soft">
           {method === "exact"
@@ -109,7 +115,7 @@ export function SettleUpCard({
             : `${transfers.length} payments settle everyone.`}
         </p>
       )}
-    </Card>
+    </section>
   );
 }
 

@@ -37,7 +37,7 @@ const steps: { title: string; short: string; long: string }[] = [
 export function HelpPage() {
   return (
     <div className="max-w-2xl">
-      <h1 className="font-hand text-5xl font-bold">
+      <h1 className="font-hand text-3xl font-bold sm:text-4xl">
         <Highlight>How Esep works</Highlight>
       </h1>
       <ol className="mt-10 space-y-8">

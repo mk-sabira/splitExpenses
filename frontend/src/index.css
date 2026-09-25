@@ -5,6 +5,7 @@
    token even if no utility uses it, because the SVG strokes read them via var(). */
 @theme static {
   --color-paper: #fdfbf6;
+  --color-cream: #f4ecd8; /* warmer desk-paper page, behind the groups list */
   --color-ink: #1f1e1c;
   --color-ink-soft: #57544e;
   --color-ink-faint: #b4b0a7;

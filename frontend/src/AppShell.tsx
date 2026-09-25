@@ -1,4 +1,4 @@
-import { Link, NavLink, Outlet } from "react-router";
+import { Link, NavLink, Outlet, useMatch } from "react-router";
 import { useAuth } from "./auth/AuthContext";
 import { Avatar, Button, Wordmark } from "./ui";
 import { RoughLayer, useSeed } from "./ui/rough";
@@ -6,8 +6,9 @@ import { RoughLayer, useSeed } from "./ui/rough";
 export function AppShell() {
   const { state, logout } = useAuth();
   const user = state.status === "authenticated" ? state.user : null;
+  const onGroupsList = useMatch("/groups") !== null;
   return (
-    <div className="min-h-screen">
+    <div className={`min-h-screen ${onGroupsList ? "bg-cream" : ""}`}>
       <header className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 pt-6 pb-2 sm:px-6">
         <Link to="/groups" aria-label="Esep, my groups" className="pb-1">
           <Wordmark />
@@ -20,7 +21,7 @@ export function AppShell() {
             <span className="flex items-center gap-2">
               <Avatar name={user.name} colorKey={user.id} size={30} />
               <span className="sr-only sm:not-sr-only">{user.name}</span>
-              <Button variant="quiet" onClick={logout} className="text-base text-ink-soft sm:text-lg">
+              <Button variant="danger" size="sm" onClick={logout} className="text-base sm:text-lg">
                 log out
               </Button>
             </span>
@@ -36,14 +37,27 @@ export function AppShell() {
   );
 }
 
+// The current page gets a pale sticky-note fill behind it; the text itself
+// doesn't change. "my groups" stays marked inside a group too, since NavLink
+// matches everything under /groups.
 function NavItem({ to, children }: { to: string; children: string }) {
   const seed = useSeed();
   return (
-    <NavLink to={to} className="relative pb-0.5 text-ink-soft hover:text-ink aria-[current=page]:text-ink">
+    <NavLink to={to} className="relative px-2.5 pt-1 pb-0.5 text-ink-soft hover:text-ink">
       {({ isActive }) => (
         <>
-          {children}
-          {isActive && <RoughLayer shape={{ kind: "underline" }} seed={seed} strokeWidth={1.5} roughness={1.8} />}
+          {isActive && (
+            <RoughLayer
+              shape={{ kind: "rect" }}
+              seed={seed}
+              fill="var(--color-sticky)"
+              fillStyle="solid"
+              stroke="var(--color-ink-faint)"
+              strokeWidth={1}
+              roughness={1.6}
+            />
+          )}
+          <span className="relative">{children}</span>
         </>
       )}
     </NavLink>

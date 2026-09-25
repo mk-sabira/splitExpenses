@@ -1,10 +1,11 @@
 import { useState, type ButtonHTMLAttributes } from "react";
 import { RoughLayer, useSeed } from "./rough";
 
-type Variant = "primary" | "default" | "quiet";
+type Variant = "primary" | "default" | "danger" | "quiet";
 
 // primary: the one action that matters on a screen, filled with the accent ink.
-// default: outlined. quiet: text only, underlined on hover.
+// default: outlined. danger: outlined in red, for leaving or destroying.
+// quiet: text only, underlined on hover. size="sm" for tight spots like the header.
 // The outline is re-sketched on every hover, like a pen going over it again.
 export function Button({
   variant = "default",
@@ -12,8 +13,9 @@ export function Button({
   children,
   disabled,
   type = "button",
+  size = "md",
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: "md" | "sm" }) {
   const seed = useSeed();
   const [pass, setPass] = useState(0);
   const [hover, setHover] = useState(false);
@@ -30,8 +32,8 @@ export function Button({
       onMouseLeave={() => setHover(false)}
       className={`relative inline-flex items-center justify-center gap-2 font-hand text-lg leading-none whitespace-nowrap
         transition-transform active:translate-y-px disabled:cursor-not-allowed disabled:opacity-45
-        ${variant === "quiet" ? "px-1 py-1" : "px-5 pt-2.5 pb-2"}
-        ${variant === "primary" ? "font-bold text-paper" : "text-ink"} ${className}`}
+        ${variant === "quiet" ? "px-1 py-1" : size === "sm" ? "px-3 pt-1.5 pb-1" : "px-5 pt-2.5 pb-2"}
+        ${variant === "primary" ? "font-bold text-paper" : variant === "danger" ? "text-owe" : "text-ink"} ${className}`}
       {...props}
     >
       {variant === "primary" && (
@@ -45,10 +47,11 @@ export function Button({
           roughness={1.3}
         />
       )}
-      {variant === "default" && (
+      {(variant === "default" || variant === "danger") && (
         <RoughLayer
           shape={{ kind: "rect" }}
           seed={s}
+          stroke={variant === "danger" ? "var(--color-owe)" : undefined}
           strokeWidth={1.5}
           roughness={1.4}
           fill="var(--color-paper)"

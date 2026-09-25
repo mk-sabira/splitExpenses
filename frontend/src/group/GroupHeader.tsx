@@ -21,7 +21,7 @@ export function GroupHeader({
     <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
       <div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <h1 className="font-hand text-5xl leading-tight font-bold">
+          <h1 className="font-hand text-3xl leading-tight font-bold sm:text-4xl">
             <Highlight>{live.name}</Highlight>
           </h1>
           {live.status === "CLOSED" && <Stamp ink="owe">Closed</Stamp>}

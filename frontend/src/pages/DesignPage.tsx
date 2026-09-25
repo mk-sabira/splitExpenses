@@ -63,6 +63,7 @@ export function DesignPage() {
           <div className="flex flex-wrap items-center gap-4">
             <Button variant="primary">Add expense</Button>
             <Button>Invite</Button>
+            <Button variant="danger">Log out</Button>
             <Button variant="quiet">Cancel</Button>
             <Button disabled>Disabled</Button>
           </div>

@@ -16,7 +16,7 @@ export function GroupsPage() {
   return (
     <div className="space-y-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <h1 className="font-hand text-5xl font-bold">
+        <h1 className="font-hand text-3xl font-bold sm:text-4xl">
           <Highlight>My groups</Highlight>
         </h1>
         {!creating && (

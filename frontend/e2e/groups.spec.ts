@@ -11,6 +11,13 @@ test("an empty list invites you to start a group; creating one opens it", async 
   await page.getByLabel("Remind debtors after").fill("3");
   await page.getByRole("button", { name: "Create group" }).click();
   await expect(page).toHaveURL(/\/groups\/[a-z0-9]+$/);
+  // A new group: just the prompt to add an expense, no balances or feed yet,
+  // and the invite link open since you're alone.
+  await expect(page.getByText("Add your first expense to get started.")).toBeVisible();
+  await expect(page.getByText("you're all settled up")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "What happened" })).toHaveCount(0);
+  await expect(page.getByText("Invite with this link")).toBeVisible();
+  await expect(page.getByRole("banner").getByRole("link", { name: "my groups", exact: true })).toHaveAttribute("aria-current", "page");
 
   await page.goto("/groups");
   const card = page.getByRole("link", { name: /Flat 4B/ });

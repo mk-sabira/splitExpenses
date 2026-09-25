@@ -59,8 +59,10 @@ export function ActivityFeed({ changeCount }: { changeCount: number }) {
     }
   }, [groupId, feed?.cursor]);
 
-  const items = feed?.items ?? null;
+  // Creating the group isn't news: the feed starts with the first real action.
+  const items = feed?.items.filter((a) => a.type !== "GROUP_CREATED") ?? null;
   const cursor = feed?.cursor ?? null;
+  if (items?.length === 0 && !cursor && !error) return null;
 
   const money = (n: unknown) => formatMoney(Number(n), currency);
   const name = (id: unknown) => nameOf(String(id));
@@ -69,7 +71,6 @@ export function ActivityFeed({ changeCount }: { changeCount: number }) {
     <Card title="What happened" tone="paper" tilt={0.3}>
       {error && <Notice>{error}</Notice>}
       {items === null && !error && <p className="text-ink-soft">Loading…</p>}
-      {items?.length === 0 && <p className="text-ink-soft">Nothing yet.</p>}
       <ol className="space-y-3">
         {items?.map((a) => (
           <li key={a.id} className="flex gap-3">
@@ -117,8 +118,6 @@ function describe(
     </Link>
   );
   switch (a.type) {
-    case "GROUP_CREATED":
-      return <>{who} started the group</>;
     case "MEMBER_JOINED":
       return <>{who} joined</>;
     case "MEMBER_INVITED":

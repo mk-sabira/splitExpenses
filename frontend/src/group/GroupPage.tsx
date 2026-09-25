@@ -8,8 +8,8 @@ import { ActivityFeed } from "./ActivityFeed";
 import { ExpenseForm } from "./ExpenseForm";
 import { GroupContext, type GroupCtx } from "./context";
 import { GroupHeader } from "./GroupHeader";
-import { MembersCard } from "./MembersCard";
-import { BalancesCard, PendingCard, RepayForm, SettleUpCard, YouCard } from "./MoneyCards";
+import { MembersPanel } from "./MembersPanel";
+import { BalanceCard, PendingCard, RepayForm } from "./MoneyCards";
 import { useGroupLive } from "./useGroupLive";
 
 export function GroupPage() {
@@ -55,23 +55,44 @@ export function GroupPage() {
   }
 
   const { detail, snapshot } = state.group;
+  // No expense or repayment has ever been recorded (every money write bumps
+  // ledgerVersion), so there's nothing to balance or settle yet.
+  const fresh = snapshot.ledgerVersion === 0;
 
   return (
     <GroupContext.Provider value={ctx}>
-      <div className="space-y-10">
-        <GroupHeader detail={detail} live={snapshot.group} connection={connection} />
+      {/* Top to bottom: who and where, the everyday action, the money, then what happened. */}
+      <div className="space-y-8">
+        <div className="space-y-4">
+          <GroupHeader detail={detail} live={snapshot.group} connection={connection} />
+          <MembersPanel detail={detail} closed={ctx.closed} />
+        </div>
+        {ctx.closed ? (
+          <p className="font-hand text-xl text-ink-soft">This group is closed, so no new expenses. Repayments still work.</p>
+        ) : adding ? (
+          <div className="max-w-2xl">
+            <ExpenseForm onDone={() => setAdding(false)} />
+          </div>
+        ) : (
+          <div>
+            {fresh && <p className="mb-3 font-hand text-2xl">Add your first expense to get started.</p>}
+            <Button variant="primary" onClick={() => setAdding(true)} className="text-xl">
+              + Add an expense
+            </Button>
+          </div>
+        )}
         <div className="grid items-start gap-x-10 gap-y-10 md:grid-cols-12">
           <div className="space-y-10 md:col-span-7">
-            {ctx.closed ? (
-              <p className="font-hand text-xl text-ink-soft">This group is closed, so no new expenses. Repayments still work.</p>
-            ) : adding ? (
-              <ExpenseForm onDone={() => setAdding(false)} />
-            ) : (
-              <Button variant="primary" onClick={() => setAdding(true)} className="text-xl">
-                + Add an expense
-              </Button>
+            {!fresh && (
+              <BalanceCard
+                balances={snapshot.balances}
+                pending={snapshot.pendingPayments}
+                transfers={snapshot.settlement.transfers}
+                method={snapshot.settlement.method}
+                onRepay={() => setRepay({})}
+                onPaid={(t) => setRepay(t)}
+              />
             )}
-            <YouCard balances={snapshot.balances} pending={snapshot.pendingPayments} onRepay={() => setRepay({})} />
             {repay && (
               <RepayForm
                 key={`${repay.toUserId}-${repay.amount}`}
@@ -80,16 +101,9 @@ export function GroupPage() {
               />
             )}
             <PendingCard payments={snapshot.pendingPayments} />
-            <BalancesCard balances={snapshot.balances} />
-            <SettleUpCard
-              transfers={snapshot.settlement.transfers}
-              method={snapshot.settlement.method}
-              onPaid={(t) => setRepay(t)}
-            />
           </div>
-          <div className="space-y-10 md:col-span-5 md:mt-6">
+          <div className="md:col-span-5">
             <ActivityFeed changeCount={changeCount} />
-            <MembersCard detail={detail} closed={ctx.closed} />
           </div>
         </div>
       </div>

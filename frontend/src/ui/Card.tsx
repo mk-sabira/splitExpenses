@@ -9,6 +9,7 @@ export type TapeColor = "marker" | "blush" | "sky" | "mint";
 // Pass tilt={0} for cards holding forms or long tables.
 export function Card({
   title,
+  label,
   aside,
   tilt,
   tone = "paper",
@@ -17,6 +18,7 @@ export function Card({
   children,
 }: {
   title?: ReactNode;
+  label?: string; // accessible name when there's no visible title
   aside?: ReactNode; // right-hand side of the title row
   tilt?: number;
   tone?: Tone;
@@ -30,6 +32,7 @@ export function Card({
   return (
     <section
       aria-labelledby={title ? titleId : undefined}
+      aria-label={title ? undefined : label}
       className={`relative px-5 pt-4 pb-5 ${className}`}
       style={{ transform: `rotate(${angle}deg)` }}
     >

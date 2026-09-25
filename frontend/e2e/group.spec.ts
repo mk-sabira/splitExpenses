@@ -31,11 +31,15 @@ test("balances, settle-up plan and activity update live in the other person's br
   const { alice, bob, g, a } = await aliceAndBob(browser);
   await open(alice, g.id);
   await open(bob, g.id);
-  await expect(bob.getByText("you're all settled up")).toBeVisible();
+  // Nothing has happened yet: just the prompt, no balances and no "settled up".
+  await expect(bob.getByText("Add your first expense to get started.")).toBeVisible();
+  await expect(region(bob, "Balances")).toHaveCount(0);
+  await expect(bob.getByText("you're all settled up")).toHaveCount(0);
 
   // Alice adds an expense (through the API); Bob's page updates without a reload.
   await a.post(`/groups/${g.id}/expenses`, dinner(a.me.id, g.members));
   await expect(bob.getByText(/you owe\s*€20\.00/)).toBeVisible();
+  await expect(bob.getByText("Add your first expense to get started.")).toHaveCount(0);
   await expect(region(bob, "Balances")).toContainText(/Alice\s*is owed\s*€20\.00/);
   await expect(region(bob, "Balances")).toContainText(/Bob\s*\(you\)\s*owes\s*€20\.00/);
   await expect(region(bob, "To settle up")).toContainText(/You\s*Alice\s*€20\.00/);
@@ -64,6 +68,7 @@ test("repaying: propose from the plan, the recipient confirms, both are settled"
   await expect(pending).toContainText("“Cash”");
   await expect(region(bob, "Waiting for confirmation")).toContainText("waiting for Alice to confirm");
   await expect(bob.getByText(/you owe\s*€20\.00/)).toBeVisible();
+  await expect(bob.getByText("Add your first expense to get started.")).toHaveCount(0);
   await expect(bob.getByText("€20.00 of that is waiting for confirmation.")).toBeVisible();
   await expect(bob.getByRole("button", { name: "Record a repayment" })).toHaveCount(0); // nothing left to propose
 
@@ -71,7 +76,9 @@ test("repaying: propose from the plan, the recipient confirms, both are settled"
   await expect(bob.getByText("you're all settled up")).toBeVisible();
   await expect(alice.getByText("you're all settled up")).toBeVisible();
   await expect(region(bob, "Waiting for confirmation")).toHaveCount(0);
-  await expect(region(bob, "To settle up")).toContainText("Nobody owes anybody.");
+  // Settled: one message, no balance list or plan repeating it.
+  await expect(region(bob, "To settle up")).toHaveCount(0);
+  await expect(region(bob, "Balances").getByRole("list")).toHaveCount(0);
   await expect(region(bob, "What happened")).toContainText("Alice confirmed getting €20.00 from Bob");
 });
 
@@ -91,6 +98,7 @@ test("a repayment can be rejected by the recipient or withdrawn by the payer", a
   await region(bob, "Waiting for confirmation").getByRole("button", { name: "Withdraw" }).click();
   await expect(region(alice, "Waiting for confirmation")).toHaveCount(0);
   await expect(bob.getByText(/you owe\s*€20\.00/)).toBeVisible();
+  await expect(bob.getByText("Add your first expense to get started.")).toHaveCount(0);
 });
 
 test("the repayment form shows the server's limit when you overpay", async ({ browser }) => {
@@ -130,7 +138,10 @@ test("a new member appears for everyone watching", async ({ browser }) => {
   await register(carol, "Carol");
   const inviteToken = (await (await apiAs(alice)).get(`/groups/${g.id}`)).group.inviteToken;
   await (await apiAs(carol)).post(`/invites/link/${inviteToken}/join`);
-  await expect(region(alice, "Members")).toContainText("Carol");
+  // Members are folded away until asked for.
+  await expect(alice.getByText("Invite with this link")).toBeHidden();
+  await alice.getByText("Members & invite").click();
+  await expect(alice.getByRole("list", { name: "Members" })).toContainText("Carol");
   await expect(alice.getByText(/3 members/)).toBeVisible();
 });
 
@@ -142,15 +153,15 @@ test("the feed pages back through older entries", async ({ browser }) => {
   await expect(feed.getByRole("listitem")).toHaveCount(15);
   await expect(feed.getByRole("listitem").first()).toContainText("Coffee 20");
   await feed.getByRole("button", { name: "Show older" }).click();
-  // 20 expenses + created + joined = 22 entries.
-  await expect(feed.getByRole("listitem")).toHaveCount(22);
-  await expect(feed.getByRole("listitem").last()).toContainText("Alice started the group");
+  // 20 expenses + Bob joining = 21 entries; creating the group isn't shown.
+  await expect(feed.getByRole("listitem")).toHaveCount(21);
+  await expect(feed.getByRole("listitem").last()).toContainText("Bob joined");
   await expect(feed.getByRole("button", { name: "Show older" })).toHaveCount(0);
 
   // A live update adds the new entry on top and keeps the older pages.
   await a.post(`/groups/${g.id}/expenses`, dinner(a.me.id, g.members, 999, "Late snack"));
   await expect(feed.getByRole("listitem").first()).toContainText("Late snack");
-  await expect(feed.getByRole("listitem")).toHaveCount(23);
+  await expect(feed.getByRole("listitem")).toHaveCount(22);
 });
 
 test("without a socket connection the page still loads and updates over REST", async ({ browser }) => {
