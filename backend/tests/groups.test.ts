@@ -244,9 +244,24 @@ describe("inviting by email", () => {
       email: emailOf(dave),
       groupName: "Book club",
       invitedBy: "Alice",
+      currency: "EUR",
+      memberCount: 1,
+      closed: false,
       expired: false,
       accepted: false,
+      alreadyMember: false,
     });
+    expect(res.body).not.toHaveProperty("groupId");
+  });
+
+  it("gives the group's id in the invite preview only to someone already in the group", async () => {
+    const g = await newGroup(alice, [bob]);
+    await invite(alice, g, emailOf(dave));
+    const { token } = await inviteRow(g.id, emailOf(dave));
+    const preview = (auth: Record<string, string>) => request(app).get(`/api/invites/email/${token}`).set(auth);
+    expect((await preview(bob.auth)).body).toMatchObject({ alreadyMember: true, groupId: g.id });
+    expect((await preview(dave.auth)).body).not.toHaveProperty("groupId");
+    expect((await preview({ authorization: "Bearer nonsense" })).status).toBe(200);
   });
 
   it("lets an existing user with the invited email accept, and nobody else", async () => {

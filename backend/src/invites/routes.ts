@@ -20,8 +20,8 @@ invitesRouter.post("/link/:token/join", requireAuth, async (req, res) => {
 });
 
 // Personal email invite: /invites/:token in the frontend.
-invitesRouter.get("/email/:token", async (req, res) => {
-  res.json(await previewEmailInvite(token(req)));
+invitesRouter.get("/email/:token", optionalAuth, async (req, res) => {
+  res.json(await previewEmailInvite(token(req), req.userId));
 });
 
 invitesRouter.post("/email/:token/accept", requireAuth, async (req, res) => {

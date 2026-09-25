@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { expect, type Page } from "@playwright/test";
 
@@ -53,4 +54,11 @@ export async function groupWith(owner: Page, others: Page[], name = "Trip", curr
     members.push(b.me.id);
   }
   return { id: group.id as string, members };
+}
+
+// The token of the latest email invite to `email` (tests can't read the stubbed
+// email); with expire: true, the invite is also made to have expired.
+export function inviteToken(email: string, { expire = false } = {}) {
+  const args = ["tsx", "--env-file=.env", "scripts/e2e-invite.ts", email, ...(expire ? ["--expire"] : [])];
+  return execFileSync("npx", args, { cwd: "../backend", encoding: "utf8" }).trim();
 }

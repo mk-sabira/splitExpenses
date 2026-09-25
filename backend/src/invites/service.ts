@@ -61,7 +61,7 @@ async function findInvite(token: string) {
   const invite = await prisma.groupInvite.findUnique({
     where: { token },
     include: {
-      group: { select: { id: true, name: true, status: true } },
+      group: { select: { id: true, name: true, currency: true, status: true, _count: { select: { members: true } } } },
       invitedBy: { select: { name: true } },
     },
   });
@@ -70,16 +70,25 @@ async function findInvite(token: string) {
 }
 
 // Public, so the invite page can show what's being accepted before the person
-// logs in or registers.
-export async function previewEmailInvite(token: string) {
+// logs in or registers. A logged-in caller who is already a member also gets
+// the group's id, so the page can take them straight in.
+export async function previewEmailInvite(token: string, userId?: string) {
   const invite = await findInvite(token);
+  const member = userId
+    ? (await prisma.groupMember.count({ where: { groupId: invite.group.id, userId } })) > 0
+    : false;
   return {
     email: invite.email,
     groupName: invite.group.name,
+    currency: invite.group.currency,
+    memberCount: invite.group._count.members,
+    closed: invite.group.status === "CLOSED",
     invitedBy: invite.invitedBy.name,
     expiresAt: invite.expiresAt,
     expired: invite.expiresAt <= new Date(),
     accepted: invite.acceptedAt !== null,
+    alreadyMember: member,
+    ...(member && { groupId: invite.group.id }),
   };
 }
 

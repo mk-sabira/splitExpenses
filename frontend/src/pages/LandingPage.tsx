@@ -52,7 +52,10 @@ function AuthCard({ mode }: { mode: Mode }) {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const { login, register } = useAuth();
-  const [form, setForm] = useState({ name: "", email: "", password: "" });
+  // An email invite (/invites/:token) passes the invited address along: it's the
+  // only account that can accept, so sign-up uses exactly that address.
+  const invitedEmail = params.get("next")?.startsWith("/invites/") ? params.get("email") : null;
+  const [form, setForm] = useState({ name: "", email: invitedEmail ?? "", password: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
@@ -74,7 +77,7 @@ function AuthCard({ mode }: { mode: Mode }) {
     setFields({});
     try {
       if (mode === "login") await login(form.email, form.password);
-      else await register(form.name, form.email, form.password);
+      else await register(form.name, invitedEmail ?? form.email, form.password);
       // <RedirectIfAuthenticated> takes it from here.
     } catch (err) {
       const f = err instanceof ApiError ? err.fields : {};
@@ -117,8 +120,10 @@ function AuthCard({ mode }: { mode: Mode }) {
           type="email"
           autoComplete="email"
           required
-          value={form.email}
+          value={mode === "register" && invitedEmail ? invitedEmail : form.email}
           onChange={set("email")}
+          readOnly={mode === "register" && invitedEmail !== null}
+          hint={mode === "register" && invitedEmail ? "The invite is for this address." : undefined}
           error={fields.email}
         />
         <TextField

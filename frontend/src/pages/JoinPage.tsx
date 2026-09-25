@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router";
 import { useAuth } from "../auth/AuthContext";
 import { api, ApiError, errorMessage } from "../lib/api";
@@ -16,7 +17,29 @@ type Preview = {
   groupId?: string; // only when you're already a member
 };
 
-const link = "font-hand text-lg underline decoration-accent decoration-2 underline-offset-4";
+export const link = "font-hand text-lg underline decoration-accent decoration-2 underline-offset-4";
+
+// "EUR (Euro) · 3 members"
+export function groupLine(p: { currency: string; memberCount: number }) {
+  const name = currencies().find((c) => c.code === p.currency)?.name;
+  return `${p.currency}${name ? ` (${name})` : ""} · ${p.memberCount} ${p.memberCount === 1 ? "member" : "members"}`;
+}
+
+// A link or invite that can't be used: says why, and where to go instead.
+export function InviteProblem({ title, children }: { title: string; children: ReactNode }) {
+  const { state } = useAuth();
+  const in_ = state.status === "authenticated";
+  return (
+    <Card title={title} tone="blush" className="max-w-lg">
+      <p className="text-ink-soft">{children}</p>
+      <p className="mt-4">
+        <Link to={in_ ? "/groups" : "/login"} className={link}>
+          {in_ ? "Go to my groups" : "Go to the front page"}
+        </Link>
+      </p>
+    </Card>
+  );
+}
 
 // /join/:token, the group's shareable link (D16). Public: shows which group
 // it is before anyone logs in, then asks to log in or sign up (coming back
@@ -32,35 +55,24 @@ export function JoinPage() {
   if (preview.status === "error") {
     const invalid = preview.error instanceof ApiError && preview.error.status === 404;
     return (
-      <Card title={invalid ? "This invite link doesn't work" : "Couldn't open this invite"} tone="blush" className="max-w-lg">
-        <p className="text-ink-soft">
-          {invalid
-            ? "It may have been mistyped, or the group's owner replaced it with a new one. Ask whoever sent it for a fresh link."
-            : errorMessage(preview.error)}
-        </p>
-        <p className="mt-4">
-          <Link to={state.status === "authenticated" ? "/groups" : "/login"} className={link}>
-            {state.status === "authenticated" ? "Go to my groups" : "Go to the front page"}
-          </Link>
-        </p>
-      </Card>
+      <InviteProblem title={invalid ? "This invite link doesn't work" : "Couldn't open this invite"}>
+        {invalid
+          ? "It may have been mistyped, or the group's owner replaced it with a new one. Ask whoever sent it for a fresh link."
+          : errorMessage(preview.error)}
+      </InviteProblem>
     );
   }
 
   const p = preview.data;
   if (p.alreadyMember && p.groupId) return <Navigate to={`/groups/${p.groupId}`} replace />;
 
-  const currencyName = currencies().find((c) => c.code === p.currency)?.name;
   return (
     <div className="max-w-lg space-y-6">
       <h1 className="font-hand text-3xl font-bold sm:text-4xl">
         <Highlight>You're invited</Highlight>
       </h1>
       <Card title={p.groupName} tone="sticky" tape="marker">
-        <p className="text-ink-soft">
-          {p.currency}
-          {currencyName && ` (${currencyName})`} · {p.memberCount} {p.memberCount === 1 ? "member" : "members"}
-        </p>
+        <p className="text-ink-soft">{groupLine(p)}</p>
         <div className="mt-5">
           {p.closed ? (
             <Notice>This group is closed, so it isn't taking new members.</Notice>
