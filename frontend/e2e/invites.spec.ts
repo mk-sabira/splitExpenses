@@ -98,3 +98,45 @@ test("an expired invite and an invalid one each say so", async ({ browser }) => 
   await hana.goto("/invites/not-a-real-token");
   await expect(hana.getByRole("heading", { name: "This invite doesn't work" })).toBeVisible();
 });
+
+test("sending an email invite from the group's Members & invite panel", async ({ browser }) => {
+  const alice = await newPage(browser);
+  await register(alice, "Alice");
+  const a = await apiAs(alice);
+  const bob = await newPage(browser);
+  const { email: bobEmail } = await register(bob, "Bob");
+  const { group } = await a.post("/groups", { name: "Book club", currency: "EUR" });
+  await (await apiAs(bob)).post(`/invites/link/${group.inviteToken}/join`);
+  await alice.goto(`/groups/${group.id}`);
+  await expect(alice.getByRole("status").filter({ hasText: "live" })).toHaveText(/^live$/);
+
+  await alice.getByText("Members & invite").click();
+  const field = alice.getByLabel("Email address to invite");
+
+  // Mistakes are explained next to the field or in a notice.
+  await field.fill("not-an-email");
+  await alice.getByRole("button", { name: "Send invite" }).click();
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  await field.fill(bobEmail);
+  await alice.getByRole("button", { name: "Send invite" }).click();
+  await expect(alice.getByRole("alert")).toContainText("already a member");
+
+  const email = newEmail("Ivy");
+  await field.fill(email);
+  await alice.getByRole("button", { name: "Send invite" }).click();
+  await expect(alice.getByText(`Invite sent to ${email}.`)).toBeVisible();
+  await expect(field).toHaveValue("");
+  await expect(alice.getByRole("list", { name: "Pending invites" })).toContainText(email);
+
+  // The invite is real: Ivy can sign up through it and accept.
+  const ivy = await newPage(browser);
+  await ivy.goto(`/invites/${inviteToken(email)}`);
+  await expect(card(ivy)).toContainText(`Alice invited ${email}.`);
+  await ivy.getByRole("button", { name: "Sign up" }).click();
+  await ivy.getByLabel("Your name").fill("Ivy");
+  await ivy.getByLabel("Password").fill(PASSWORD);
+  await ivy.getByRole("button", { name: "Create my account" }).click();
+  await ivy.getByRole("button", { name: "Accept and join" }).click();
+  await expect(ivy).toHaveURL(new RegExp(`/groups/${group.id}$`));
+  await expect(alice.getByText(/3 members/)).toBeVisible();
+});

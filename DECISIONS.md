@@ -169,3 +169,8 @@ React 19 + TypeScript + Vite, Tailwind CSS 4 (via its Vite plugin, no config fil
 - **Already a member** (including after accepting) goes straight to the group. **Expired** says so and names who to ask for a new one; an **unknown token** gets the same kind of friendly card as a bad join link. A closed group's invite shows the group but can't be accepted.
 - **Preview endpoint.** `GET /api/invites/email/:token` gains `currency`, `memberCount`, `closed` and `alreadyMember` (plus `groupId` for members), using `optionalAuth` like the link preview.
 - **Testing.** The e2e tests read invite tokens with `backend/scripts/e2e-invite.ts`, which only works for `@e2e.test.local` addresses and can also expire an invite.
+
+### D32 — Sending email invites from the group page — 2026-09-25
+- **Where.** Under the invite link in "Members & invite": an email field and "Send invite", calling the existing `POST /api/groups/:id/invites`. Any member can send one (D16); it's hidden in a closed group, which doesn't take invites.
+- **Feedback.** "✓ Invite sent to …", plus a note that email is stubbed and the backend prints the message (with the accept link) in its console (D11). Server errors show where they belong: a bad address next to the field, "already a member" in a notice.
+- **Pending list.** "Invited, not joined yet" lists `pendingInvites` from the group details with each expiry date. It refreshes after sending and when someone joins. The accept link itself is never shown to the sender: it's meant for the invitee's inbox.
