@@ -4,6 +4,7 @@ import { RedirectIfAuthenticated, RequireAuth } from "./auth/guards";
 import { GroupPage } from "./group/GroupPage";
 import { DesignPage } from "./pages/DesignPage";
 import { GroupsPage } from "./pages/GroupsPage";
+import { HelpPage } from "./pages/HelpPage";
 import { LandingPage } from "./pages/LandingPage";
 import { NotFound, Placeholder } from "./pages/Placeholder";
 
@@ -25,6 +26,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="/groups" replace /> },
       { path: "groups", element: <GroupsPage /> },
       { path: "groups/:groupId", element: <GroupPage /> },
+      { path: "help", element: <HelpPage /> },
       { path: "groups/:groupId/expenses/:expenseId", element: <Placeholder title="Expense" /> },
       { path: "join/:token", element: <Placeholder title="Join a group" /> },
       { path: "invites/:token", element: <Placeholder title="Accept an invite" /> },
