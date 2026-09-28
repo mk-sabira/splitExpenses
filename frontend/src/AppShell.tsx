@@ -18,7 +18,6 @@ export function AppShell() {
         <nav className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 font-hand text-base sm:gap-x-5 sm:text-lg">
           {user && <NavItem to="/groups">my groups</NavItem>}
           {user && <NavItem to="/help">help</NavItem>}
-          {import.meta.env.DEV && <NavItem to="/design">style guide</NavItem>}
           {user && <NotificationsMenu key={user.id} userId={user.id} />}
           {user ? (
             <span className="flex items-center gap-2">

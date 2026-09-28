@@ -169,4 +169,4 @@ The API process checks for due reminders every hour (`REMINDER_INTERVAL_MS`) and
 
 ## Style guide
 
-Every base component is shown at http://localhost:5173/design (dev builds only). See D20 and D21 in `DECISIONS.md`.
+Every base component is shown at http://localhost:5173/design. It's there in dev builds only (`npm run dev`), and it isn't linked from the header: open it by typing that URL. A production build doesn't include it. See D20 and D21 in `DECISIONS.md`.

@@ -86,7 +86,7 @@ From `git log` (commit times), plus two review steps from the agent session that
 - Expense view: details, each person's part, the receipt (thumbnail for photos, link for PDFs), edit, delete with a confirmation that explains what happens to repayments.
 - Notifications: header button with unread count, list, mark as read, synced across tabs.
 - Join-by-link and email-invite pages that work for logged-out visitors too.
-- Layout checked at 1280 px and 390 px. Style guide at `/design` (dev only).
+- Layout checked at 1280 px and 390 px. Style guide at http://localhost:5173/design (dev builds only; not linked from the header, open it by typing the URL).
 
 **Tests** (how to run them: see the README)
 - Backend, `npm test` (186 tests, Vitest + Supertest, against the local database). Highlights: 20,000 random splits; 80 random create/edit/delete steps with repayments, checking every invariant after each step; concurrent creates and edits; 3,000 random settlement cases against brute force; racing repayment decisions; reminders over simulated weeks; real Socket.io clients for room isolation and ordering; notifications; combined totals against per-group balances on random histories; receipts (content sniffing, size limit, access, nothing left on disk after a failed write).
