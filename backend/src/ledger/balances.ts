@@ -45,3 +45,30 @@ export async function computeBalances(db: Db, groupId: string): Promise<MemberBa
     .filter(([userId, amount]) => memberIds.has(userId) || amount !== 0)
     .map(([userId, amount]) => ({ userId, net: amount }));
 }
+
+// One user's net balance in every group they belong to, in a single query:
+// the same formula as computeBalances, restricted to that user and grouped by
+// group. Used by the groups list and the combined totals (D34), in place of one
+// balances request per group.
+export async function computeMyNets(db: Db, userId: string): Promise<Map<string, number>> {
+  const rows = await db.$queryRaw<{ groupId: string; net: bigint }[]>`
+    SELECT m."groupId", COALESCE(SUM(t.v), 0)::bigint AS net
+    FROM "GroupMember" m
+    LEFT JOIN (
+      SELECT e."groupId", e.amount::bigint AS v
+        FROM "Expense" e WHERE e."paidById" = ${userId} AND e."deletedAt" IS NULL
+      UNION ALL
+      SELECT e."groupId", -s.amount::bigint
+        FROM "ExpenseSplit" s JOIN "Expense" e ON e.id = s."expenseId"
+        WHERE s."userId" = ${userId} AND e."deletedAt" IS NULL
+      UNION ALL
+      SELECT p."groupId", p.amount::bigint
+        FROM "Payment" p WHERE p."fromUserId" = ${userId} AND p.status = 'CONFIRMED'
+      UNION ALL
+      SELECT p."groupId", -p.amount::bigint
+        FROM "Payment" p WHERE p."toUserId" = ${userId} AND p.status = 'CONFIRMED'
+    ) t ON t."groupId" = m."groupId"
+    WHERE m."userId" = ${userId}
+    GROUP BY m."groupId"`;
+  return new Map(rows.map((r) => [r.groupId, Number(r.net)]));
+}

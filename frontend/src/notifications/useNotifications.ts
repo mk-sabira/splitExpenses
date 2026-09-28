@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { io } from "socket.io-client";
-import { api, tokenStore } from "../lib/api";
+import { api } from "../lib/api";
 import type { AppNotification } from "../lib/types";
+import { useUserEvent } from "../lib/userSocket";
 
 const PAGE = 20;
 
@@ -14,8 +14,8 @@ interface State {
 // The logged-in user's notifications, kept current in real time (D33).
 //
 // The latest page comes from REST; new ones arrive on the user's own socket
-// room, which the server joins on connect (no group:join needed). Anything
-// missed while disconnected is picked up by reloading on every (re)connect.
+// room (shared with the groups list, see lib/userSocket). Anything missed
+// while disconnected is picked up by reloading on every connect.
 // "notification:read" keeps the unread count in step across open tabs.
 export function useNotifications(userId: string) {
   const [state, setState] = useState<State>({ items: [], unreadCount: 0, loaded: false });
@@ -44,29 +44,23 @@ export function useNotifications(userId: string) {
 
   useEffect(() => {
     void load();
-    const socket = io({ auth: { token: tokenStore.get() }, transports: ["websocket", "polling"] });
-    let first = true;
-    socket.on("connect", () => {
-      if (!first) void load();
-      first = false;
-    });
-    socket.on("notification:new", (n: AppNotification) => {
-      eventsRef.current++;
-      setState((s) =>
-        s.items.some((x) => x.id === n.id)
-          ? s
-          : { ...s, items: [n, ...s.items].slice(0, PAGE), unreadCount: s.unreadCount + 1 },
-      );
-    });
-    socket.on("notification:read", (r: { id: string | null; unreadCount: number }) => {
-      eventsRef.current++;
-      setState((s) => markLocally(s, r.id, r.unreadCount));
-    });
-    return () => {
-      loadRef.current?.abort();
-      socket.disconnect();
-    };
+    return () => loadRef.current?.abort();
   }, [userId, load]);
+
+  const onNew = useCallback((n: AppNotification) => {
+    eventsRef.current++;
+    setState((s) =>
+      s.items.some((x) => x.id === n.id)
+        ? s
+        : { ...s, items: [n, ...s.items].slice(0, PAGE), unreadCount: s.unreadCount + 1 },
+    );
+  }, []);
+  const onRead = useCallback((r: { id: string | null; unreadCount: number }) => {
+    eventsRef.current++;
+    setState((s) => markLocally(s, r.id, r.unreadCount));
+  }, []);
+  useUserEvent("notification:new", onNew, load);
+  useUserEvent("notification:read", onRead);
 
   const markRead = useCallback(async (id: string | null) => {
     // Shown as read at once; the server's count wins when it answers.

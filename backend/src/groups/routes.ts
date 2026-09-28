@@ -40,7 +40,7 @@ groupsRouter.post("/", async (req, res) => {
 });
 
 groupsRouter.get("/", async (req, res) => {
-  res.json({ groups: await listGroups(req.userId!) });
+  res.json(await listGroups(req.userId!));
 });
 
 groupsRouter.get("/:groupId", requireMember, async (req, res) => {

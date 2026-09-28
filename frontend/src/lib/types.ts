@@ -20,6 +20,16 @@ export interface GroupSummary {
   memberCount: number;
   myRole: Role;
   createdAt: string;
+  myNet: number; // your balance in this group, minor units; > 0 you're owed
+}
+
+// GET /groups: one line per currency, summed over all your groups (backend D34).
+export interface CurrencyTotal {
+  currency: string;
+  owe: number; // total you owe, in groups where you're behind
+  owed: number; // total owed to you, in groups where you're ahead
+  net: number; // owed − owe
+  groupCount: number;
 }
 
 export interface Member {

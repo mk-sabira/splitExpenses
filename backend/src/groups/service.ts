@@ -3,6 +3,7 @@ import type { GroupStatus, Prisma } from "@prisma/client";
 import { config } from "../config";
 import { logEmails, queueEmail } from "../email/outbox";
 import { prisma } from "../db";
+import { computeMyNets } from "../ledger/balances";
 import { withGroupRowLock } from "../ledger/lock";
 import { HttpError } from "../lib/errors";
 import { publishGroupUpdate } from "../realtime";
@@ -39,13 +40,22 @@ export async function createGroup(userId: string, input: GroupSettings) {
   });
 }
 
+// The caller's groups, each with their own net balance (`myNet`), plus
+// `totals`: one line per currency summing those balances across all groups,
+// closed ones included (D34). Read in one transaction so the two agree.
 export async function listGroups(userId: string) {
-  const memberships = await prisma.groupMember.findMany({
-    where: { userId },
-    orderBy: { joinedAt: "desc" },
-    include: { group: { include: { _count: { select: { members: true } } } } },
-  });
-  return memberships.map(({ role, group }) => ({
+  const { memberships, nets } = await prisma.$transaction(
+    async (tx) => ({
+      memberships: await tx.groupMember.findMany({
+        where: { userId },
+        orderBy: { joinedAt: "desc" },
+        include: { group: { include: { _count: { select: { members: true } } } } },
+      }),
+      nets: await computeMyNets(tx, userId),
+    }),
+    { isolationLevel: "RepeatableRead" },
+  );
+  const groups = memberships.map(({ role, group }) => ({
     id: group.id,
     name: group.name,
     currency: group.currency,
@@ -55,7 +65,24 @@ export async function listGroups(userId: string) {
     memberCount: group._count.members,
     myRole: role,
     createdAt: group.createdAt,
+    myNet: nets.get(group.id) ?? 0,
   }));
+  return { groups, totals: combinedTotals(groups) };
+}
+
+// Per currency: what you owe across groups, what you're owed, and the net.
+// Currencies are never converted into each other. Sorted by currency code.
+export function combinedTotals(groups: { currency: string; myNet: number }[]) {
+  const byCurrency = new Map<string, { currency: string; owe: number; owed: number; net: number; groupCount: number }>();
+  for (const g of groups) {
+    const t = byCurrency.get(g.currency) ?? { currency: g.currency, owe: 0, owed: 0, net: 0, groupCount: 0 };
+    if (g.myNet < 0) t.owe -= g.myNet;
+    else t.owed += g.myNet;
+    t.net += g.myNet;
+    t.groupCount++;
+    byCurrency.set(g.currency, t);
+  }
+  return [...byCurrency.values()].sort((a, b) => a.currency.localeCompare(b.currency));
 }
 
 export async function getGroup(groupId: string) {

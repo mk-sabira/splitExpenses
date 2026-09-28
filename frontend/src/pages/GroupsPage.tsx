@@ -1,17 +1,29 @@
-import { useEffect, useState, type SubmitEvent } from "react";
+import { useCallback, useState, type SubmitEvent } from "react";
 import { Link, useNavigate } from "react-router";
-import { useUser } from "../auth/AuthContext";
 import { api, ApiError, errorMessage } from "../lib/api";
 import { currencies } from "../lib/currencies";
-import type { GroupDetail, GroupSummary, MemberBalance, Payment } from "../lib/types";
+import type { CurrencyTotal, GroupDetail, GroupSummary, Payment } from "../lib/types";
 import { useApi } from "../lib/useApi";
+import { useUserEvent } from "../lib/userSocket";
 import { Balance, Button, Card, Highlight, Loading, Money, Notice, SelectField, Stamp, TextField, type Tone } from "../ui";
 
 const TONES: Tone[] = ["sticky", "sky", "mint", "lilac", "blush"];
 
+// Your groups with your balance in each, and the totals across all of them,
+// from one request (D34). Any change in any of your groups arrives as
+// "groups:changed" on your own socket and re-reads the page's data, so a
+// balance here is never older than the last change.
 export function GroupsPage() {
-  const groups = useApi<{ groups: GroupSummary[] }>("/groups");
+  const groups = useApi<{ groups: GroupSummary[]; totals: CurrencyTotal[] }>("/groups");
+  const pending = useApi<{ payments: PendingPayment[] }>("/payments/pending");
   const [creating, setCreating] = useState(false);
+  const { reload: reloadGroups } = groups;
+  const { reload: reloadPending } = pending;
+  const refresh = useCallback(() => {
+    reloadGroups();
+    reloadPending();
+  }, [reloadGroups, reloadPending]);
+  useUserEvent("groups:changed", refresh, refresh);
 
   return (
     <div className="space-y-10">
@@ -26,7 +38,9 @@ export function GroupsPage() {
         )}
       </div>
 
-      <WaitingForYou />
+      {groups.status === "ok" && groups.data.groups.length > 0 && <Totals totals={groups.data.totals} />}
+
+      <WaitingForYou payments={pending.data?.payments ?? []} />
 
       {creating && <CreateGroup onCancel={() => setCreating(false)} />}
 
@@ -45,9 +59,8 @@ export function GroupsPage() {
 type PendingPayment = Payment & { groupName: string; currency: string; direction: "incoming" | "outgoing" };
 
 // Repayments someone says they've made to you, which only you can confirm.
-function WaitingForYou() {
-  const pending = useApi<{ payments: PendingPayment[] }>("/payments/pending");
-  const incoming = pending.data?.payments.filter((p) => p.direction === "incoming") ?? [];
+function WaitingForYou({ payments }: { payments: PendingPayment[] }) {
+  const incoming = payments.filter((p) => p.direction === "incoming");
   if (incoming.length === 0) return null;
   return (
     <Card title="Waiting for you" tone="sky" tape="marker" tilt={-0.4} className="max-w-2xl">
@@ -68,8 +81,33 @@ function WaitingForYou() {
   );
 }
 
+// Across all your groups, closed ones included: one line per currency, since
+// amounts in different currencies are never added together. The main figure
+// is the net; the owe/owed split underneath shows when it hides debts in both
+// directions (those are to different people, so they don't cancel out).
+function Totals({ totals }: { totals: CurrencyTotal[] }) {
+  return (
+    <Card title="Across all your groups" tone="paper" tilt={-0.3} className="max-w-2xl">
+      <ul className="space-y-3">
+        {totals.map((t) => (
+          <li key={t.currency} data-testid={`total-${t.currency}`}>
+            <p className="font-hand text-2xl font-bold">
+              <Balance net={t.net} currency={t.currency} you />
+            </p>
+            {t.owe > 0 && t.owed > 0 && (
+              <p className="text-sm text-ink-soft">
+                you owe <Money amount={t.owe} currency={t.currency} /> and you're owed{" "}
+                <Money amount={t.owed} currency={t.currency} />, in {t.groupCount} {t.currency} groups
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
 function GroupGrid({ groups }: { groups: GroupSummary[] }) {
-  const net = useMyBalances(groups);
   return (
     <ul className="grid gap-x-8 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
       {groups.map((g, i) => (
@@ -91,13 +129,7 @@ function GroupGrid({ groups }: { groups: GroupSummary[] }) {
                 {g.myRole === "OWNER" && " · you're the owner"}
               </p>
               <p className="mt-4 font-hand text-2xl font-bold">
-                {net[g.id] === undefined ? (
-                  <span className="text-ink-faint">…</span>
-                ) : net[g.id] === null ? (
-                  <span className="text-base text-ink-soft">balance unavailable</span>
-                ) : (
-                  <Balance net={net[g.id]!} currency={g.currency} you />
-                )}
+                <Balance net={g.myNet} currency={g.currency} you />
               </p>
             </Card>
           </Link>
@@ -105,27 +137,6 @@ function GroupGrid({ groups }: { groups: GroupSummary[] }) {
       ))}
     </ul>
   );
-}
-
-// The logged-in user's net balance in each group, fetched in parallel.
-// undefined while loading, null if that request failed.
-function useMyBalances(groups: GroupSummary[]) {
-  const me = useUser();
-  const [net, setNet] = useState<Record<string, number | null>>({});
-  useEffect(() => {
-    const ctrl = new AbortController();
-    for (const g of groups) {
-      api<{ balances: MemberBalance[] }>(`/groups/${g.id}/balances`, { signal: ctrl.signal })
-        .then(({ balances }) => {
-          if (!ctrl.signal.aborted) setNet((n) => ({ ...n, [g.id]: balances.find((b) => b.userId === me.id)?.net ?? 0 }));
-        })
-        .catch((err) => {
-          if ((err as Error).name !== "AbortError") setNet((n) => ({ ...n, [g.id]: null }));
-        });
-    }
-    return () => ctrl.abort();
-  }, [groups, me.id]);
-  return net;
 }
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {

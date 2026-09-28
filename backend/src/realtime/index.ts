@@ -14,7 +14,9 @@ import { serializePayment } from "../payments/serialize";
 // balances, settlement plan, status and pending payments.
 //
 // Every socket also joins its user's own room on connect, authenticated by the
-// same handshake. It carries "notification:new" and "notification:read" (D33).
+// same handshake. It carries "notification:new" and "notification:read" (D33),
+// and "groups:changed" whenever anything changes in one of the user's groups,
+// so the groups list can refresh (D34).
 
 export type ChangeType =
   | "expense.created"
@@ -38,6 +40,7 @@ export interface Change {
 export const UPDATE_EVENT = "group:update";
 export const NOTIFICATION_EVENT = "notification:new";
 export const NOTIFICATION_READ_EVENT = "notification:read";
+export const GROUPS_CHANGED_EVENT = "groups:changed";
 const room = (groupId: string) => `group:${groupId}`;
 const userRoom = (userId: string) => `user:${userId}`;
 
@@ -99,8 +102,15 @@ export function publishGroupUpdate(groupId: string, change: Change) {
   if (!io) return;
   enqueue(groupId, async () => {
     const server = io;
-    if (!server || !server.sockets.adapter.rooms.get(room(groupId))?.size) return; // nobody watching
-    server.to(room(groupId)).emit(UPDATE_EVENT, await snapshot(groupId, change));
+    if (!server) return;
+    if (server.sockets.adapter.rooms.get(room(groupId))?.size) {
+      server.to(room(groupId)).emit(UPDATE_EVENT, await snapshot(groupId, change));
+    }
+    // Only a hint: the groups list re-reads GET /groups, which is the source of truth.
+    const members = await prisma.groupMember.findMany({ where: { groupId }, select: { userId: true } });
+    if (members.length > 0) {
+      server.to(members.map((m) => userRoom(m.userId))).emit(GROUPS_CHANGED_EVENT, { groupId, type: change.type });
+    }
   });
 }
 

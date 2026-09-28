@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet, useMatch } from "react-router";
 import { useAuth } from "./auth/AuthContext";
+import { UserSocketProvider } from "./lib/userSocket";
 import { NotificationsMenu } from "./notifications/NotificationsMenu";
 import { Avatar, Button, Wordmark } from "./ui";
 import { RoughLayer, useSeed } from "./ui/rough";
@@ -8,7 +9,7 @@ export function AppShell() {
   const { state, logout } = useAuth();
   const user = state.status === "authenticated" ? state.user : null;
   const onGroupsList = useMatch("/groups") !== null;
-  return (
+  const page = (
     <div className={`min-h-screen ${onGroupsList ? "bg-cream" : ""}`}>
       <header className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 pt-6 pb-2 sm:px-6">
         <Link to="/groups" aria-label="Esep, my groups" className="pb-1">
@@ -36,6 +37,13 @@ export function AppShell() {
         <Outlet />
       </main>
     </div>
+  );
+  return user ? (
+    <UserSocketProvider key={user.id} userId={user.id}>
+      {page}
+    </UserSocketProvider>
+  ) : (
+    page
   );
 }
 

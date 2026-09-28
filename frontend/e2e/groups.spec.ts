@@ -87,3 +87,79 @@ test("server-side validation shows up next to the field", async ({ page }) => {
   await page.getByRole("button", { name: "Create group" }).click();
   await expect(page.getByLabel("Name")).toHaveAttribute("aria-invalid", "true");
 });
+
+// Minimal expense through the API, split equally between `participants`.
+async function addExpense(page: Parameters<typeof apiAs>[0], groupId: string, amount: number, participants: string[]) {
+  const a = await apiAs(page);
+  await a.post(`/groups/${groupId}/expenses`, {
+    paidById: a.me.id,
+    amount,
+    description: "Something",
+    category: "OTHER",
+    date: "2026-09-20",
+    split: { type: "EQUAL", participants },
+  });
+}
+
+test("totals across all groups: one line per currency, closed groups included", async ({ browser }) => {
+  const alice = await (await browser.newContext()).newPage();
+  const bob = await (await browser.newContext()).newPage();
+  await register(alice, "Alice");
+  await register(bob, "Bob");
+  // Bob owes €20.00 in one EUR group and is owed €5.00 in another; is owed $30.00 in a closed USD group.
+  const eur1 = await groupWith(alice, [bob], "Dinner club", "EUR");
+  const eur2 = await groupWith(bob, [alice], "Cinema", "EUR");
+  const usd = await groupWith(bob, [alice], "NYC", "USD");
+  await addExpense(alice, eur1.id, 4000, eur1.members);
+  await addExpense(bob, eur2.id, 1000, eur2.members);
+  await addExpense(bob, usd.id, 6000, usd.members);
+  await (await apiAs(bob)).post(`/groups/${usd.id}/close`);
+
+  await bob.goto("/groups");
+  const totals = bob.getByRole("region", { name: "Across all your groups" });
+  await expect(totals.getByTestId("total-EUR")).toContainText(/you owe\s*€15\.00/);
+  await expect(totals.getByTestId("total-EUR")).toContainText("you owe €20.00 and you're owed €5.00, in 2 EUR groups");
+  await expect(totals.getByTestId("total-USD")).toContainText(/you're owed\s*\$30\.00/);
+  await expect(bob.getByRole("link", { name: /NYC/ })).toContainText("Closed");
+  await expect(bob.getByRole("link", { name: /NYC/ })).toContainText(/you're owed\s*\$30\.00/);
+});
+
+test("the list and the totals update live when something changes in another browser", async ({ browser }) => {
+  const alice = await (await browser.newContext()).newPage();
+  const bob = await (await browser.newContext()).newPage();
+  await register(alice, "Alice");
+  await register(bob, "Bob");
+  const g = await groupWith(alice, [bob], "Dinner club");
+  const card = bob.getByRole("link", { name: /Dinner club/ });
+  const totals = bob.getByRole("region", { name: "Across all your groups" });
+
+  await bob.goto("/groups");
+  await expect(card).toContainText("settled up");
+  await expect(totals).toContainText("settled up");
+
+  // Alice adds an expense in her own browser; Bob's page isn't reloaded.
+  await addExpense(alice, g.id, 4000, g.members);
+  await expect(card).toContainText(/you owe\s*€20\.00/);
+  await expect(totals.getByTestId("total-EUR")).toContainText(/you owe\s*€20\.00/);
+
+  // A repayment waiting for Alice appears on her list live, and her balance
+  // only changes once she confirms it.
+  await alice.goto("/groups");
+  const aliceCard = alice.getByRole("link", { name: /Dinner club/ });
+  await expect(aliceCard).toContainText(/you're owed\s*€20\.00/);
+  const { payment } = await (await apiAs(bob)).post(`/groups/${g.id}/payments`, { toUserId: g.members[0], amount: 2000 });
+  await expect(alice.getByRole("region", { name: "Waiting for you" })).toContainText("€20.00 in Dinner club");
+  await expect(aliceCard).toContainText(/you're owed\s*€20\.00/);
+  await (await apiAs(alice)).post(`/payments/${payment.id}/confirm`);
+  await expect(card).toContainText("settled up");
+  await expect(aliceCard).toContainText("settled up");
+  await expect(alice.getByRole("region", { name: "Waiting for you" })).toHaveCount(0);
+
+  // Someone joining changes the member count on the owner's card.
+  const { group: ski } = await (await apiAs(alice)).post("/groups", { name: "Ski trip", currency: "EUR" });
+  const skiCard = alice.getByRole("link", { name: /Ski trip/ });
+  await alice.reload();
+  await expect(skiCard).toContainText("1 member");
+  await (await apiAs(bob)).post(`/invites/link/${ski.inviteToken}/join`);
+  await expect(skiCard).toContainText("2 members");
+});
