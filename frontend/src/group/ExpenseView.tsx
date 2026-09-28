@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router";
-import { ApiError, errorMessage } from "../lib/api";
+import { Link, useNavigate } from "react-router";
+import { api, ApiError, errorMessage } from "../lib/api";
 import { formatDay } from "../lib/time";
 import type { Expense } from "../lib/types";
+import { useAction } from "../lib/useAction";
 import { useApi } from "../lib/useApi";
 import { Button, Card, Loading, Money, Notice } from "../ui";
 import { MemberAvatar, useGroup } from "./context";
 import { CATEGORIES, ExpenseForm } from "./ExpenseForm";
 
-// One expense, opened from the activity feed, shown above the group's
-// balances. "Edit" swaps in the expense form, which lists everyone who is in
-// the group now, so people who joined later can be added to the split.
+// One expense, opened from the expense list or the activity feed, shown above
+// the group's balances. "Edit" swaps in the expense form, which lists everyone
+// who is in the group now, so people who joined later can be added to the
+// split. "Delete" asks first (D35).
 export function ExpenseView({ expenseId, changeCount }: { expenseId: string; changeCount: number }) {
   const { groupId, members, name, currency, closed } = useGroup();
   const res = useApi<{ expense: Expense }>(`/groups/${groupId}/expenses/${expenseId}`);
@@ -92,12 +94,55 @@ export function ExpenseView({ expenseId, changeCount }: { expenseId: string; cha
           </p>
         )}
         {!closed && (
-          <div className="mt-5">
+          <div className="mt-5 flex flex-wrap gap-3">
             <Button onClick={() => setEditing(true)}>Edit</Button>
+            <DeleteExpense expense={e} />
           </div>
         )}
       </Card>
       {back}
+    </div>
+  );
+}
+
+// Deleting takes the expense out of everyone's balances at once (the server
+// soft-deletes it, D9). Repayments are separate records and stay as they are,
+// so the confirmation spells out what that means.
+function DeleteExpense({ expense }: { expense: Expense }) {
+  const { groupId, currency, afterChange } = useGroup();
+  const navigate = useNavigate();
+  const [confirming, setConfirming] = useState(false);
+  const action = useAction();
+  const remove = () =>
+    action.run(async () => {
+      await api(`/groups/${groupId}/expenses/${expense.id}`, { method: "DELETE" });
+      await afterChange();
+      navigate(`/groups/${groupId}`);
+    });
+
+  if (!confirming) {
+    return (
+      <Button variant="danger" onClick={() => setConfirming(true)}>
+        Delete
+      </Button>
+    );
+  }
+  return (
+    <div role="group" aria-label="Confirm delete" className="w-full space-y-3">
+      <p className="text-sm">
+        Delete <b className="font-medium">{expense.description}</b> (<Money amount={expense.amount} currency={currency} />)? Everyone's
+        balances are recalculated without it straight away. Repayments already made stay as they are, so anyone who has
+        already paid their share back will be shown as owed that money. The activity feed keeps a record of it.
+      </p>
+      <div className="flex gap-3">
+        <Button variant="primary" disabled={action.busy} onClick={remove}>
+          {action.busy ? "Deleting…" : "Yes, delete it"}
+        </Button>
+        <Button variant="quiet" onClick={() => setConfirming(false)}>
+          Keep it
+        </Button>
+      </div>
+      {action.error && <Notice>{action.error}</Notice>}
     </div>
   );
 }

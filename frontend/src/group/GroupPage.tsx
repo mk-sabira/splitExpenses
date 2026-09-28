@@ -6,6 +6,7 @@ import type { Transfer } from "../lib/types";
 import { Button, Card, Loading, Notice } from "../ui";
 import { ActivityFeed } from "./ActivityFeed";
 import { ExpenseForm } from "./ExpenseForm";
+import { ExpenseList } from "./ExpenseList";
 import { ExpenseView } from "./ExpenseView";
 import { GroupContext, type GroupCtx } from "./context";
 import { GroupHeader } from "./GroupHeader";
@@ -110,6 +111,7 @@ export function GroupPage() {
               />
             )}
             <PendingCard payments={snapshot.pendingPayments} />
+            {!fresh && <ExpenseList changeCount={changeCount} openId={expenseId} />}
           </div>
           <div className="md:col-span-5">
             <ActivityFeed changeCount={changeCount} />

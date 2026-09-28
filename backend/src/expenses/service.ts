@@ -43,13 +43,39 @@ export function serializeExpense(e: ExpenseWithSplits) {
 
 export type SerializedExpense = ReturnType<typeof serializeExpense>;
 
-export async function listExpenses(groupId: string) {
-  const expenses = await prisma.expense.findMany({
-    where: { groupId, deletedAt: null },
-    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+// Live expenses, newest first by the expense's date, then by when it was
+// recorded (D35). Keyset-paged on (date, createdAt, id) like the activity feed
+// (D22); `before` is the id of the last expense on the previous page. A cursor
+// expense deleted in between still works, so paging carries on past it.
+export async function listExpenses(groupId: string, opts: { limit: number; before?: string }) {
+  let where: Prisma.ExpenseWhereInput = { groupId, deletedAt: null };
+  if (opts.before) {
+    const c = await prisma.expense.findFirst({
+      where: { id: opts.before, groupId },
+      select: { id: true, date: true, createdAt: true },
+    });
+    if (!c) throw new HttpError(400, "Invalid cursor");
+    where = {
+      groupId,
+      deletedAt: null,
+      OR: [
+        { date: { lt: c.date } },
+        { date: c.date, createdAt: { lt: c.createdAt } },
+        { date: c.date, createdAt: c.createdAt, id: { lt: c.id } },
+      ],
+    };
+  }
+  const rows = await prisma.expense.findMany({
+    where,
+    orderBy: [{ date: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+    take: opts.limit + 1,
     include: withSplits,
   });
-  return expenses.map(serializeExpense);
+  const page = rows.slice(0, opts.limit);
+  return {
+    expenses: page.map(serializeExpense),
+    nextCursor: rows.length > opts.limit ? page[page.length - 1].id : null,
+  };
 }
 
 export async function getExpense(groupId: string, expenseId: string) {

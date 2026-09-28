@@ -178,6 +178,36 @@ describe("expense CRUD", () => {
     expect(await expensesWithBadSplits(g)).toEqual([]);
   });
 
+  it("pages the list newest first by date, then by when recorded, skipping deleted ones (D35)", async () => {
+    const h = await createGroup([alice, bob]);
+    const ids: Record<string, string> = {};
+    // Recorded out of date order, with two on the same day.
+    for (const [label, date] of [["mid", "2026-05-10"], ["old", "2026-01-01"], ["new", "2026-09-01"], ["mid2", "2026-05-10"], ["gone", "2026-06-01"]]) {
+      ids[label] = (await create(alice, h, body(alice, 100, equal(alice, bob), { description: label, date }))).body.expense.id;
+    }
+    expect((await remove(alice, h, ids.gone)).status).toBe(200);
+
+    const pages: string[][] = [];
+    let before: string | null = null;
+    do {
+      const query: Record<string, string | number> = before ? { limit: 2, before } : { limit: 2 };
+      const res = await request(app).get(url(h)).query(query).set(bob.auth);
+      expect(res.status).toBe(200);
+      pages.push(res.body.expenses.map((e: { description: string }) => e.description));
+      before = res.body.nextCursor;
+    } while (before);
+    expect(pages).toEqual([["new", "mid2"], ["mid", "old"]]);
+
+    // A cursor that has since been deleted still continues from where it was.
+    const first = await request(app).get(url(h)).query({ limit: 1 }).set(bob.auth);
+    expect((await remove(alice, h, ids.new)).status).toBe(200);
+    const next = await request(app).get(url(h)).query({ limit: 10, before: first.body.nextCursor }).set(bob.auth);
+    expect(next.body.expenses.map((e: { description: string }) => e.description)).toEqual(["mid2", "mid", "old"]);
+
+    expect((await request(app).get(url(h)).query({ before: "nope" }).set(bob.auth)).status).toBe(400);
+    expect((await request(app).get(url(g)).query({ before: ids.old }).set(bob.auth)).status).toBe(400); // another group's
+  });
+
   it("updates an expense, replacing its splits and bumping its version", async () => {
     const created = (await create(alice, g, body(alice, 600, equal(alice, bob)))).body.expense;
     const res = await update(bob, g, created.id, {

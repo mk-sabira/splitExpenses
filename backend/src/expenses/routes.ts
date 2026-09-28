@@ -55,11 +55,16 @@ const expenseBody = z.object({
 
 const updateBody = expenseBody.extend({ version: z.number().int().positive() });
 
+const listQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  before: id.optional(),
+});
+
 export const expensesRouter = Router({ mergeParams: true });
 expensesRouter.use(requireAuth, requireMember);
 
 expensesRouter.get("/", async (req, res) => {
-  res.json({ expenses: await listExpenses(req.groupId!) });
+  res.json(await listExpenses(req.groupId!, listQuery.parse(req.query)));
 });
 
 expensesRouter.get("/:expenseId", async (req, res) => {
