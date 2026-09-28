@@ -1,116 +1,141 @@
 # Project Status
 
-Honest record of what works, what's partial, and what isn't done.
-It's updated at each milestone, not only at the end. Times are local (UTC+04:00).
+An honest record of what works, what's partial, what isn't done and why. It's updated at each milestone, not only at the end. Times are local (UTC+04:00).
+
+**As of 2026-09-28:** the required features are implemented and covered by automated tests; the gaps are listed under [Partial](#partial) and [Not done](#not-done-and-why). Backend: 186 tests. Frontend: 34 unit tests and 51 end-to-end tests in real browsers. All pass, including on a fresh clone with an empty database (checked 2026-09-28).
 
 ## Timeline
 
-| When | Checkpoint |
+From `git log` (commit times), plus two review steps from the agent session that have no commit of their own (marked *session*). Earlier versions of this table had hand-written times, some of which didn't match the commits.
+
+| When | What |
 |---|---|
-| 2026-09-23 19:56 | Initial commit: README + .gitignore |
-| 2026-09-23 20:02 | **Work started.** Schema design proposed for review |
-| 2026-09-23 20:08 | Schema approved. Open questions resolved (reminder unit, closed-group rules, leaving a group, rounding) |
-| 2026-09-23 20:11 | Milestone 1: docker-compose Postgres, Prisma schema, init migration applied |
-| 2026-09-24 09:21 | Milestone 2: Express app skeleton, auth (register, login, JWT, `/me`), first automated tests |
-| 2026-09-24 09:35 | Milestone 3: expense CRUD with EQUAL / SHARES / EXACT splits, largest-remainder rounding, balances endpoint, invariant tests |
-| 2026-09-24 09:40 | Milestone 4: groups, owner/member roles, invite by link and by email, settings with currency lock, close/reopen |
-| 2026-09-24 10:05 | Milestone 5: repayments (propose / confirm / reject / cancel), minimum-transfer settlement, closing summary email |
-| 2026-09-24 10:15 | Milestone 6: real-time sync (Socket.io rooms per group, snapshot broadcasts), dev test page and terminal watcher |
-| 2026-09-24 10:40 | Milestone 7: debtor reminder job (per-group `reminderDays`, at most weekly, re-checked under the group lock) |
-| 2026-09-24 12:30 | Frontend milestone 1: Vite + React + Tailwind skeleton, routes, hand-drawn design system and `/design` style guide, for visual review |
-| 2026-09-24 12:50 | Activity feed endpoint (keyset-paginated, newest first), ahead of the group view |
-| 2026-09-24 13:20 | Design revision after review: "Esep" wordmark, red/green balances, sticky-note colours, avatars, front page |
-| 2026-09-24 14:00 | Frontend: log in / sign up wired to the API, session handling, protected routes, Playwright end-to-end tests |
-| 2026-09-24 14:30 | Frontend: groups list with per-group balance, repayments awaiting confirmation, create group |
-| 2026-09-24 15:20 | Frontend: group view with live updates: balances, settle-up plan, repayments (propose / confirm / reject / withdraw), activity feed, members and invite link, close/reopen |
-| 2026-09-24 15:50 | Frontend: add-expense form with equal / shares / exact splits and a live preview that rounds like the server |
-| 2026-09-28 11:00 | Expense notifications: stored per recipient, pushed live to a per-user socket room, header indicator with unread count and mark-as-read |
-| 2026-09-28 11:30 | Groups list: balances and per-currency totals across all groups from one request, refreshed live |
-| 2026-09-28 12:00 | Group view: paginated expense list (newest first, your share), delete from the expense view with a confirmation |
-| 2026-09-28 13:00 | Receipts: one per expense (JPEG / PNG / WebP / PDF, 5 MB, type checked by content), members-only download, replace or remove on edit |
+| 2026-09-23 19:56 | Initial commit: README and .gitignore |
+| 2026-09-23 20:02 | *session:* schema design proposed for review |
+| 2026-09-23 20:08 | *session:* schema approved; open questions settled (reminder unit, closed-group rules, no leaving groups, rounding rule) |
+| 2026-09-23 20:12 | Database schema, docker-compose Postgres, decision log and status file |
+| 2026-09-24 09:20 | Express app and auth (register, login, JWT), first tests |
+| 2026-09-24 09:30 | Expenses with equal / shares / exact splits, rounding, balances |
+| 2026-09-24 09:38 | Groups, roles, invites by link and by email |
+| 2026-09-24 09:59 | Repayments, minimum-transfer settlement, closing summary email |
+| 2026-09-24 10:13 | Real-time sync (Socket.io room per group) |
+| 2026-09-24 10:39 | Debtor reminder job with a weekly cap |
+| 2026-09-24 12:24 | Frontend skeleton and hand-drawn design system |
+| 2026-09-24 12:27 | Activity feed endpoint |
+| 2026-09-24 12:41 | Design revision after review (name, colours, front page) |
+| 2026-09-24 12:48 | Log in and sign up, with Playwright end-to-end tests |
+| 2026-09-24 12:51 | Groups list and create group |
+| 2026-09-24 12:59 | Live group view: balances, settle-up, repayments, activity |
+| 2026-09-24 13:02 | Add-expense form with live split preview |
+| 2026-09-25 10:12 | Front page "how it works" guide |
+| 2026-09-25 10:43 | Group view layout and header |
+| 2026-09-25 11:18 | Expense view and edit |
+| 2026-09-25 11:45 | Join-by-link page |
+| 2026-09-25 12:12 | Email-invite page; client cancelled-request race fixed; "Invite by email" panel (three commits in the same minute) |
+| 2026-09-28 10:58 | In-app expense notifications, pushed live |
+| 2026-09-28 11:10 | Combined balances per currency; groups list refreshed live, one request |
+| 2026-09-28 11:22 | Expense list and deleting expenses in the UI |
+| 2026-09-28 11:37 | Receipt upload with members-only download |
+| 2026-09-28 | Documentation pass: README, this file |
+
+## The task, point by point
+
+| Requirement | Status | Where it's proven |
+|---|---|---|
+| Groups with members; invite by link or email | Done | `groups.test.ts`; `join.spec.ts`, `invites.spec.ts` |
+| Group currency | Done: chosen at creation, locked after the first expense or payment | `groups.test.ts` ("allows a currency change until the first expense…") |
+| Expense: who paid, how much, split equally / by shares / by exact amounts | Done | `expenses.test.ts`, `split.test.ts`; `expense.spec.ts` |
+| Category, date, comment, receipt file | Done | `receipts.test.ts`; `receipts.spec.ts` |
+| Balances per group and across all groups | Done: across groups, one total per currency, no conversion | `myBalances.test.ts`; `groups.spec.ts` |
+| Repayment, full or partial, confirmed by the recipient | Done | `payments.test.ts`; `group.spec.ts` |
+| Group activity feed | Done | `activity.test.ts`; `group.spec.ts` |
+| Reminders to debtors | Done: email (stubbed) | `reminders.test.ts` |
+| Closing a group with a final report | Done: report emailed to everyone (stubbed); can be reopened | `payments.test.ts` ("closing summary email"), `groups.test.ts` |
+| Balances recalculated and updated for everyone immediately | Done: Socket.io push after every committed change | `realtime.test.ts`; two-browser tests in `group.spec.ts`, `expenses.spec.ts` |
+| Minimum set of transfers, not "everyone pays everyone" | Done: exact search up to 15 people with a balance, greedy above | `settlement.test.ts` (3,000 random cases against brute force) |
+| Notification when an expense involving you is added or edited | Done: in-app, live (also on delete) | `notifications.test.ts`; `notifications.spec.ts` |
+| No lost cents; a fixed rule for who gets the extra cent | Done: largest remainder, ties to whoever joined first (D5) | `split.test.ts` (20,000 random splits) |
+| Editing or deleting an old expense recalculates everything, including repayments | Done: balances are always derived from records (D3) | `expenses.test.ts` (80 random steps with repayments); `expenses.spec.ts` (delete after a confirmed repayment) |
+| Repayment counts only after confirmation; pending is visible to both | Done | `payments.test.ts` ("shows pending payments to both sides") |
+| Unpaid debt past the group's deadline: email with amount and recipient, at most weekly, not once paid | Done | `reminders.test.ts` (simulated weeks) |
+| Two people add expenses at once: both counted, balances sum to zero | Done: group row lock (D4) | `expenses.test.ts` ("serializes 20 simultaneous creates…") |
+| Closing: no new expenses, everyone emailed the summary, can be reopened | Done | `groups.test.ts`, `payments.test.ts`; `expense.spec.ts` |
+| Works with two clients open at once | Done | every `*.spec.ts` that opens two browsers |
 
 ## Works
-- `docker compose up -d` starts PostgreSQL 16. The data volume persists between restarts.
-- Prisma schema for all entities: users, groups, members, invites, expenses, splits, payments, activity, notifications, email outbox.
-- The init migration is applied, including hand-written CHECK constraints (see D12).
-- Express 5 API with a central error handler: `400` for validation errors and malformed JSON, `404` for unknown routes.
-- Auth (see D14): `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`. Emails are trimmed and lowercased. The password hash is never returned.
-- `requireAuth` middleware for protected routes (Bearer JWT → `req.userId`).
-- Expenses: `GET/POST /api/groups/:groupId/expenses` (the list is keyset-paged, newest first by date, D35), `GET/PUT/DELETE /api/groups/:groupId/expenses/:expenseId`.
-  - EQUAL, SHARES and EXACT splits. Largest-remainder rounding with ties broken by join order (D5). EXACT amounts must add up exactly.
-  - Every write takes the group row lock, bumps `ledgerVersion` and updates `owingSince` in the same transaction (D4, D7).
-  - Optimistic lock on edits: a stale `version` gets `409` (D10). Deletes are soft deletes with activity snapshots (D9). Closed groups block expense changes (D8).
-- Groups (see D16): `POST /api/groups`, `GET /api/groups` (mine), `GET /api/groups/:id` (members, pending invites, invite link, `currencyLocked`).
-  - Owner-only: `PUT /api/groups/:id/settings` (name, currency, reminderDays), `POST …/close`, `POST …/reopen`, `POST …/invite-link` (replace the link).
-  - The currency locks once there's any expense or payment. Closed groups block expense changes, new members and new invites.
-- Invites:
-  - Shareable link: `GET /api/invites/link/:token` (public preview), `POST …/join`.
-  - By email: `POST /api/groups/:id/invites` stores the invite and stub-sends an email (console + `EmailOutbox`). `GET /api/invites/email/:token` (public preview), `POST …/accept` (the invited email only; new users register first). Expires after 7 days; re-inviting issues a new token.
-- Balances: `GET /api/groups/:groupId/balances`, derived from expenses and confirmed repayments (D3).
-- Settlement (D6, D17): `GET /api/groups/:groupId/settlement` returns the fewest transfers that settle everyone. It uses an exact bitmask search for ≤ 15 non-zero balances and greedy matching above that.
-- Repayments (D17):
-  - `POST /api/groups/:groupId/payments` proposes a full or partial repayment, capped at what's still owed.
-  - `POST /api/payments/:id/confirm` and `…/reject` are recipient only; `…/cancel` is payer only.
-  - `GET /api/groups/:groupId/payments` (`?status=`) lists a group's payments; `GET /api/payments/pending` lists yours across groups. Allowed in closed groups (D8).
-- Closing a group emails every member a summary: final balances, the settlement plan and their own part in it.
-- Real-time sync (D18): Socket.io with JWT handshake, one room per group joined via `group:join`. Every committed change broadcasts `group:update` with fresh balances, settlement, status and pending payments, in order per group. Manual testing: `/dev/realtime` page or `npm run watch` (see README).
-- Activity feed (D22): `GET /api/groups/:groupId/activity`, newest first, `?limit=` (default 30, max 100) and `?before=` cursor paging; each entry has its actor and the stored snapshot.
-- Expense notifications (D33): adding, editing or deleting an expense notifies everyone it involves (split and payer, before and after an edit) except whoever made the change. Stored in `Notification`, pushed live to a per-user Socket.io room, listed at `GET /api/notifications` with an unread count, and marked read one by one or all at once. In the UI: a header button with the unread count and a panel linking to each expense.
-- Receipts (D36): an optional file sent with the expense as multipart (JPEG, PNG, WebP or PDF up to 5 MB; the type is detected from the content). Stored in `backend/uploads/` (git-ignored) under random names, and downloaded only by group members through `GET …/expenses/:id/receipt`. Editing can replace or remove it. Deleting the expense keeps the file (members only). In the UI: a file field in the add and edit form with immediate type and size errors, and a thumbnail (photos) or link (PDFs) on the expense view.
-- Groups list (D34): `GET /api/groups` returns your balance in each group and totals per currency across all of them (closed groups included) from one query. The page shows the totals card at the top and refreshes live on `groups:changed`, sent to every member's own socket room on any change.
-- Debtor reminders (D19): an hourly in-process job emails anyone who has owed money for the group's `reminderDays`, then repeats at that interval but never more than once a week. Settled debts are never reminded, and debtors whose pending payments cover the whole debt are skipped. Closed groups are included (D8). Interval: `REMINDER_INTERVAL_MS`.
-- `npm test`: 186 tests (Vitest + Supertest) against the local database. Each file cleans up its own rows. They include:
-  - 20,000 random splits that must sum exactly and round fairly;
-  - 80 random create/edit/delete steps with repayments, checking balances after every step;
-  - concurrency tests;
-  - a create → repay → edit → delete scenario;
-  - 3,000 random settlement cases checked against an independent brute-force minimum;
-  - full, partial, rejected and racing repayments;
-  - real Socket.io clients: room isolation between groups, every change type, and update ordering;
-  - activity paging: newest first, ties on identical timestamps, and entries arriving mid-scroll;
-  - notifications: the right recipients on create, edit and delete (never the actor, never anyone uninvolved), read state, paging, and live delivery only to the recipients' sockets;
-  - per-group balances and currency totals from the single query, checked against the per-group balances on random histories;
-  - receipts: each accepted format detected by content, renamed or disguised files refused, the 5 MB limit (exactly 5 MB passes), nothing left on disk after a rejected or failed write, non-members and other groups' URLs get 404, no static access, replace / remove / keep on edit, deleted expenses keep the file, and the test cleanup deleting files;
-  - reminders over simulated weeks of hourly runs (no real waiting), including the weekly cap, settling before and between reminders, a settlement racing the job, and overlapping runs.
-- `npm run typecheck` covers `src` and `tests`.
-- Frontend `npm run e2e`: Playwright end-to-end tests in the system Chrome against a real backend (started automatically on port 3100; needs the database running). Test users are deleted afterwards. Current coverage: sign up, log in, wrong password, taken email, reload, log out, return to `?next=`, the open-redirect guard; groups list empty state, create group, red/green balances per user, the confirmation strip, and server validation errors; the group view in two browsers side by side (live balances, plan and feed; propose → confirm; reject; withdraw; overpaying; close/reopen seen live; a member joining; feed paging with live inserts; REST fallback with the socket blocked; non-members); adding expenses (equal split rounding shown and saved, leaving someone out, paying for someone else, shares, exact amounts that must add up, client validation, closed groups); the how-to guide on the front page and at `/help`; notifications arriving live in another browser (not for the actor or someone left out), opening one, mark-all-as-read, and the read state syncing across two tabs; totals across groups in two currencies with a closed group; the groups list and totals updating live from another browser (expense, pending and confirmed repayment, someone joining); the expense list (order, your share, show more, opening a row), deleting with a confirmation seen live in a second browser, deleting after a confirmed repayment (the repayment stands and is shown as owed back, balances sum to zero), and no edit or delete in a closed group; receipts added with an expense and opened by the other member in a second browser (thumbnail and new tab), a non-member refused, wrong type and oversize files refused (in the browser, and by the server for a disguised file) with nothing saved, and replacing and removing a receipt seen live. Frontend `npm test`: unit tests for money parsing and formatting, and the split preview checked against the backend's own `resolveSplit` on 5,000 random splits.
 
-- Frontend skeleton (D20, D21, D23): every route exists. Log in and sign up work against the API (D24): the session survives reloads, protected pages redirect to `/login?next=…` and return afterwards, and API errors are shown next to the right field. The groups list (D25) shows each group with your balance in red or green, flags repayments waiting for your confirmation, and creates groups. The group view (D26) updates live over Socket.io, falls back to REST when the socket is down, and covers balances, the settle-up plan, the whole repayment flow, the activity feed, members with the invite link, and close/reopen. Its layout (D28) puts adding an expense first, keeps balances and the settle-up plan in one card, and folds the member list and invite link away. Adding an expense (D27) supports all three split types with a live per-person preview. The front page shows a five-step "How it works" guide as a path of sticky notes, in place of the old sample group and feature cards; logged-in users get a longer version at `/help`, linked from the header (not on `/design`, which is dev-only). Opening an expense from the activity feed shows it above the group's balances, with an Edit button; the edit form lists everyone in the group now, so people who joined later can be added to an old expense's split (D29). The join-by-link page (D30) previews the group, sends logged-out visitors through log in or sign up and back, and joins on confirmation. The email-invite page (D31) works the same way but only for the invited address: sign-up locks that email, and a different logged-in account is told who the invite is for. Invites are sent from the group's "Members & invite" panel (D32), which also lists who's been invited and hasn't joined. An "Expenses" card lists the group's expenses newest first with your share, 10 at a time, each opening the expense view, and the expense view has a Delete button with a confirmation (D35), hidden in closed groups. The base components are Card (sticky-note tones, washi tape), Button (primary / default / quiet), TextField, SelectField, Checkbox, Choice (split-type picker), Balance (red owes / green owed), Money, Avatar, Wordmark, Highlight, Divider, Arrow and Stamp, all drawn with rough.js. They can be reviewed at http://localhost:5173/design. Typecheck and production build pass, and the layout was checked at 1280 px and 390 px.
+**Backend** (Node + TypeScript, Express 5, Prisma 6, PostgreSQL 16)
+- Auth (D14): register, log in, `GET /api/auth/me`. bcrypt passwords, JWT in a Bearer header.
+- Groups (D16): create, list (with your balance and per-currency totals, D34), details. Owner-only settings (name, currency, reminder days), close, reopen and replacing the invite link. The currency locks once there's money in the group.
+- Invites (D16): shareable link with a public preview; personal email invite that only the invited address can accept, expires after 7 days.
+- Expenses (D15, D35, D36): create, list (paged, newest first by date), view, edit (optimistic lock, D10), soft delete (D9). EQUAL, SHARES and EXACT splits with largest-remainder rounding (D5). Optional receipt (JPEG, PNG, WebP or PDF, 5 MB, type detected from content), downloadable by group members only.
+- Balances and settlement (D3, D6): always calculated from the records, never stored; the fewest transfers that settle everyone.
+- Repayments (D17): propose (full or partial, capped at what's owed), confirm or reject (recipient only), cancel (payer only). Allowed in closed groups (D8).
+- Every money write locks the group row and bumps `ledgerVersion` (D4), so concurrent writes are serialized and clients can drop stale updates.
+- Activity feed (D22): every change with a snapshot, newest first, keyset-paged.
+- Notifications (D33): a stored row per person involved in an expense change (never the person who made it), pushed live.
+- Real-time (D18, D33, D34): Socket.io. One room per group with snapshots after every committed change, in commit order. One room per user for notifications and "something changed in one of your groups".
+- Emails (D11), all stubbed to the console and the `EmailOutbox` table: invites, debtor reminders (D19: hourly job, per-group delay, at most weekly, skipped once settled or fully covered by pending repayments), and the closing summary.
+- CHECK constraints in the database as a backstop (D12, D36).
+
+**Frontend** (React 19, Vite, Tailwind 4, rough.js)
+- Front page with a "how it works" guide; log in / sign up; `/help`.
+- Groups list: your balance in each group (red owes, green owed), totals per currency across all groups, repayments waiting for your confirmation, create group. Refreshes live.
+- Group view, live over Socket.io with a REST fallback: balances and the settle-up plan in one card, the full repayment flow, pending repayments, expense list with "show more", activity feed, members and invites (link and email), close / reopen.
+- Expense form (add and edit): three split types with a live per-person preview that rounds exactly like the server, receipt field with immediate type and size errors.
+- Expense view: details, each person's part, the receipt (thumbnail for photos, link for PDFs), edit, delete with a confirmation that explains what happens to repayments.
+- Notifications: header button with unread count, list, mark as read, synced across tabs.
+- Join-by-link and email-invite pages that work for logged-out visitors too.
+- Layout checked at 1280 px and 390 px. Style guide at `/design` (dev only).
+
+**Tests** (how to run them: see the README)
+- Backend, `npm test` (186 tests, Vitest + Supertest, against the local database). Highlights: 20,000 random splits; 80 random create/edit/delete steps with repayments, checking every invariant after each step; concurrent creates and edits; 3,000 random settlement cases against brute force; racing repayment decisions; reminders over simulated weeks; real Socket.io clients for room isolation and ordering; notifications; combined totals against per-group balances on random histories; receipts (content sniffing, size limit, access, nothing left on disk after a failed write).
+- Frontend unit, `npm test` (34): money parsing and formatting; the split preview against the backend's own `resolveSplit` on 5,000 random splits; the API client's abort handling.
+- End-to-end, `npm run e2e` (51, Playwright in the system Chrome against a real backend): most scenarios use two or three separate browser sessions side by side and check that each sees the other's changes live.
+- `npm run typecheck` (backend `src` and `tests`) and the frontend production build both pass.
 
 ## Partial
-- No endpoint to revoke a pending email invite or transfer ownership.
+- **Group settings after creation.** Name, currency and reminder days can be changed through the API (owner only, tested), but the UI only sets them when the group is created.
+- **Closing report.** Sent to every member by email (stubbed); there's no in-app report page. The group page still shows the final balances and settle-up plan.
+- **Notifications** are in-app only, and only for expenses. Repayment requests and responses show up live in the group view and in "Waiting for you" on the groups list, but don't create notifications. Reminders are emails only.
+- **A deleted expense's receipt** is kept and the API serves it to members, but nothing in the UI links to it.
+- **Invites and ownership:** no way to revoke a pending email invite or transfer group ownership.
 
-## Known issue: rare intermittent e2e failures in the live-update path (2026-09-25)
-Seen while running the full frontend e2e suite in parallel (39 tests, one local backend). Before the fixes below it failed **3 times in 10 full runs**. Each time a single test waited 5 s for something that never appeared, and the test took 13–15 s instead of about 3 s. Running the affected test alone (20 repeats) never failed, so load is part of it.
+## Known issue: rare intermittent e2e failures in the live-update path — likely fixed, not proven
+First seen on 2026-09-25, running the full e2e suite in parallel (39 tests at the time, one local backend): **3 failures in 10 full runs**. Each time a single test waited 5 s for something that never appeared. Running the affected test alone (20 repeats) never failed, so load is part of it.
 
 Two failure modes were seen:
-1. **"an expense added alone can be edited to include someone who joins later"** (1 of 10 runs, plus once the day before). The trace showed the whole page replaced by React Router's error screen: `Cannot read properties of null (reading 'expense')` in `ExpenseView`.
-   - **Root cause (found and fixed).** `useApi` cancels a request when it re-fetches, and `ExpenseView` re-fetches twice right after a save. When the cancel landed while the response body was being read, `res.json()` failed with an AbortError. `api()` swallowed that with `.catch(() => null)` and returned `null` as a success, and `useApi` stored it without checking whether the request had been cancelled.
-   - **Fix.** `api()` now rethrows aborts during the body read (unit test in `src/lib/api.test.ts`). `useApi`, the activity feed and the groups list ignore results of superseded requests.
-2. **"equal split: … everyone's balance updates live"** (2 of 10 runs): a balance line never appeared. No trace was kept for these runs, so the cause is **not confirmed**. The same abort race is the likely explanation. The activity feed reloads on every live update and cancels its previous load, and before the fix a cancelled load could resolve as `null` and crash while rendering. That takes down the whole page, balances included. This is an inference, not something seen in a trace.
+1. **"an expense added alone can be edited to include someone who joins later"** (1 of 10 runs, plus once the day before). The trace showed React Router's error screen: `Cannot read properties of null (reading 'expense')` in `ExpenseView`.
+   - **Root cause (found and fixed).** `useApi` cancels a request when it re-fetches. When the cancel landed while the response body was being read, `res.json()` failed with an AbortError, `api()` swallowed it and returned `null` as a success, and `useApi` stored it without checking whether the request had been cancelled.
+   - **Fix.** `api()` rethrows aborts during the body read (unit test in `src/lib/api.test.ts`). `useApi`, the activity feed and the groups list ignore results of superseded requests.
+2. **"equal split: … everyone's balance updates live"** (2 of 10 runs): a balance line never appeared. No trace was kept, so the cause is **not confirmed**. The same abort race is the likely explanation (the feed reloads on every live update and a cancelled load could crash the page), but that's an inference, not something seen in a trace.
 
-After the fix: 6 full runs, then 2 more after the safety net below, all passed (8 of 8). That's fewer runs than it took to see the problem at first, so treat it as likely fixed rather than proven.
+**Safety net added at the same time:** after a change made on the page, the client skips the REST read-back only once the socket has actually joined the group's room, not merely connected.
 
-**Safety net added at the same time.** After a change made on the page, the client used to skip the REST read-back whenever the socket was *connected*. It now does so only once the socket has actually *joined* the group's room. If the join failed (for example the server timed out under load) or hasn't finished, the page reads the new state over REST, and the activity feed reloads with it. Changes made by *other* people while the socket is connected but not joined still wait for the join, and there's no periodic REST poll.
+**Runs since the fix:** 8 of 8 full runs passed on 2026-09-25. On 2026-09-28, as the suite grew from 42 to 51 tests, 8 more full runs whose result was read all passed (one further run's summary was lost in log output, so its result is unknown). That's 16 of 16 known runs, against 3 failures in the 10 runs before the fix. That's encouraging but it isn't proof, since failure mode 2 was never traced.
 
-**If it shows up again:** run `npx playwright test --output=<dir>` in a loop so the failing test's trace is kept (a normal run clears the previous one), then check the trace's error snapshot and network log.
+**If it shows up again:** run `npx playwright test --output=<dir>` in a loop so the failing test's trace is kept, then check its error snapshot and network log.
 
-## Not done yet (planned)
-- Notifications for payment requests and responses, and for reminders (expense notifications are done, D33)
+## Not done, and why
+- **Leaving a group / removing members.** Agreed on 2026-09-23 to leave it out: it needs a rule for what happens to that person's balance (see the next steps). Members stay in a group permanently.
+- **Notifications for repayments and reminders.** Expense notifications were what the task asked for. Repayments already surface live in the group view and on the groups list.
+- **Group settings screen, revoking invites, transferring ownership.** The task didn't require them, and each came after the required features in priority. The settings API exists and is tested.
 
 ## Deliberately out of scope
-- Real email delivery: emails are logged to the console and stored in `EmailOutbox`.
-- Real payment processing: repayments are recorded and then confirmed by the recipient.
-- File storage beyond local disk: receipts go in `backend/uploads/` (or `UPLOADS_DIR`).
-- **Leaving a group / removing members.** Agreed to skip this (2026-09-23). Members stay in a group permanently.
-- Currency conversion: each group has one currency, and combined balances are shown per currency.
+- **Real email delivery.** Emails are printed in the API console and stored in the `EmailOutbox` table (the task allows stubs).
+- **Real payment processing.** A repayment is recorded by the payer and confirmed by the recipient.
+- **File storage beyond local disk.** Receipts go in `backend/uploads/` (or `UPLOADS_DIR`).
+- **Currency conversion.** Each group has one currency; totals across groups are shown per currency.
 
-## What I'd do next (beyond the current scope)
-- Leaving a group or removing a member: allowed only when their balance is zero, or by transferring their balance to someone else. Needs a `leftAt` column on `GroupMember` and filtering in the member and split lists.
-- Real email delivery with a background job queue (e.g. BullMQ) instead of the in-process interval job. This also matters for running several API instances, which would each scan for due reminders (still correct because of the row lock, just wasteful).
-- Receipt storage in object storage (S3-compatible), with short-lived signed URLs instead of blob downloads.
-- A link to a deleted expense's receipt from its feed entry (the API already serves it to members).
+## What I'd do next
+- Leaving a group or removing a member: allowed only at a zero balance, or by moving the balance to someone else. Needs a `leftAt` column on `GroupMember` and filtering in member and split lists.
+- A group settings screen (the API is done), revoking email invites, transferring ownership.
+- Notifications for repayment requests, confirmations and rejections, using the same per-user room.
+- An in-app closing report page, and a link from a deleted expense's feed entry to its receipt.
+- Real email delivery through a job queue (e.g. BullMQ) instead of the in-process interval, which also suits running several API instances.
+- Receipts in S3-compatible storage with short-lived signed URLs.
+- A periodic REST poll on the group page as a last line of defence for missed socket updates, and more full e2e runs (with traces kept) to settle the known issue above.
 
 ## Environment notes
-- The dev machine's home partition is small, so `frontend/node_modules` is a symlink to `/goinfre`. (`backend/node_modules` was meant to be one too, but it's currently a regular directory on the home partition.) `.gitignore` uses `node_modules` without a trailing slash so the symlink is also ignored.
-- `npm audit` reports a high-severity advisory in `deepmerge-ts`, pulled in by the `prisma` CLI (a dev dependency). No fix is available upstream, and it doesn't ship at runtime.
+- The dev machine's home partition is small, so `frontend/node_modules` is a symlink to `/goinfre`. `.gitignore` uses `node_modules` without a trailing slash so the symlink is ignored too. A normal clone doesn't need this.
+- `npm audit` in `backend` reports a high-severity advisory in `deepmerge-ts`, pulled in by the `prisma` CLI (a dev dependency). No fix is available within Prisma 6, and it doesn't ship at runtime. The frontend reports none.

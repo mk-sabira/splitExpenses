@@ -1,53 +1,53 @@
 # Decision Log
 
 Short entries, newest at the bottom. Each one records what we chose and why.
-Times are local (UTC+04:00).
+Each entry's time is when the commit that first added it was made (`git log -S'### D<n> ' -- DECISIONS.md`), local time (UTC+04:00).
 
 ---
 
-### D1 — Stack: Express + Socket.io + Prisma 6 + PostgreSQL 16 — 2026-09-23 20:05
+### D1 — Stack: Express + Socket.io + Prisma 6 + PostgreSQL 16 — 2026-09-23 20:12
 Express was chosen over Fastify because more people know it and we don't need Fastify's extra speed at this scale. Socket.io was chosen over SSE because its rooms map directly onto "everyone viewing group X" and "user Y's notifications", and it reconnects on its own. Prisma is pinned to 6.x because 7.x changes how the client is configured (driver adapters are required), which adds setup work for no benefit here. TypeScript is pinned to 5.x for the same reason: the tooling around it is stable.
 
-### D2 — Money is stored as integer minor units — 2026-09-23 20:05
+### D2 — Money is stored as integer minor units — 2026-09-23 20:12
 Every amount is an `Int` of the currency's smallest unit (cents for EUR/USD, whole units for JPY). Floats can't represent money exactly, and `Decimal` would still need its own rounding rules. `Int` caps an amount at about 21M in major units, which is plenty for shared expenses. The API validates amounts against that cap.
 
-### D3 — Balances are calculated from the records, never stored — 2026-09-23 20:05
+### D3 — Balances are calculated from the records, never stored — 2026-09-23 20:12
 A member's net balance is `paid − owed + confirmed payments sent − confirmed payments received`, calculated from `Expense`, `ExpenseSplit` and `Payment` rows each time it's needed. With no running total to go stale, editing or deleting an old expense is correct by construction, and repayments already made are still counted. The cost is one aggregate query per balance read, which is trivial at group sizes. If an edit means a repayment covered too much, the balance flips sign and the recipient now owes the difference back. That's the intended behavior.
 
-### D4 — Each money write locks its group row — 2026-09-23 20:05
+### D4 — Each money write locks its group row — 2026-09-23 20:12
 Every transaction that changes money starts with `SELECT … FROM "Group" WHERE id = $1 FOR UPDATE`, then increments `Group.ledgerVersion`. Concurrent writes to the same group run one after the other, so none is lost and the `owingSince` reminder bookkeeping can't race. Balances sum to zero because each expense is written in a single transaction with splits that add up to its amount. Clients use `ledgerVersion` to ignore stale real-time updates. Different groups never block each other.
 
-### D5 — Rounding: largest remainder, ties broken by join order — 2026-09-23 20:05
+### D5 — Rounding: largest remainder, ties broken by join order — 2026-09-23 20:12
 Each share is rounded down to whole minor units. The leftover units go one each to the participants whose shares lost the most in rounding. Ties go to whoever joined the group first, then by user ID. For EQUAL splits every share loses the same amount, so the earliest-joined participants get the extra cent (10.00 / 3 → 3.34, 3.33, 3.33). EXACT splits must add up to the total exactly or the request is rejected. The resolved per-person `amount` is stored, so a later change to the rule can't change old expenses.
 
-### D6 — Minimum-transfer settlement: exact for small groups, greedy above that — 2026-09-23 20:05
+### D6 — Minimum-transfer settlement: exact for small groups, greedy above that — 2026-09-23 20:12
 The true minimum number of transfers is n minus the largest number of groups of people whose balances cancel out exactly. That problem is NP-hard. We solve it exactly with a bitmask search when up to about 15 people have non-zero balances, and fall back to greedy matching (largest debtor pays largest creditor) above that. The greedy result is never more than n−1 transfers.
 
-### D7 — Reminders are tracked per debtor per group, not per pair — 2026-09-23 20:08 (approved)
+### D7 — Reminders are tracked per debtor per group, not per pair — 2026-09-23 20:12 (approved)
 `GroupMember.owingSince` is set when a member's net balance goes negative and cleared when it returns to zero or above. `lastRemindedAt` limits reminders to one per 7 days. Tracking per debtor–creditor pair was rejected because the suggested transfers can change who owes whom whenever an expense is added, which would cause extra emails. The reminder email lists the current suggested transfers.
 
-### D8 — Closed groups still accept repayments and send reminders — 2026-09-23 20:08 (approved)
+### D8 — Closed groups still accept repayments and send reminders — 2026-09-23 20:12 (approved)
 Closing a group only blocks creating or editing expenses. Debts still exist after a group closes, so members can still settle them and still get reminded.
 
-### D9 — Soft-delete expenses; the activity log keeps snapshots — 2026-09-23 20:05
+### D9 — Soft-delete expenses; the activity log keeps snapshots — 2026-09-23 20:12
 Deleted expenses get a `deletedAt` timestamp and are left out of balances, but stay in the database for history. An `Activity` row stores a JSON snapshot of each change, with before and after for edits. The feed can therefore show what changed even after the expense itself has been edited again.
 
-### D10 — Edits to the same expense use an optimistic lock — 2026-09-23 20:05
+### D10 — Edits to the same expense use an optimistic lock — 2026-09-23 20:12
 `Expense.version` must match on update. If two people edit the same expense at once, the second gets a `409 Conflict` instead of silently overwriting the first.
 
-### D11 — Email stub writes to the console and an `EmailOutbox` table — 2026-09-23 20:05
+### D11 — Email stub writes to the console and an `EmailOutbox` table — 2026-09-23 20:12
 Real delivery is out of scope. Storing each email in a table lets tests check exactly what would have been sent, and lets a dev page show sent emails.
 
-### D12 — Defense-in-depth CHECK constraints in the migration — 2026-09-23 20:11
+### D12 — Defense-in-depth CHECK constraints in the migration — 2026-09-23 20:12
 Prisma's schema language can't express CHECK constraints, so they're added by hand to the init migration. They cover: amounts > 0, split amounts ≥ 0, shares > 0, `reminderDays` ≥ 1, a 3-letter currency code, and no paying yourself. The service layer validates the same rules. The constraints are a backstop against bugs.
 
-### D13 — Fixed category enum — 2026-09-23 20:05
+### D13 — Fixed category enum — 2026-09-23 20:12
 Categories are a fixed Postgres enum rather than free text. This keeps the data clean for any future per-category totals, and the UI can show icons for them. Custom categories are a possible later extension.
 
-### D14 — Auth: bcrypt passwords, stateless JWT in a Bearer header — 2026-09-24 09:21
+### D14 — Auth: bcrypt passwords, stateless JWT in a Bearer header — 2026-09-24 09:20
 Passwords are hashed with bcrypt (cost 12) using `bcryptjs`, which is pure JS and needs no native build step. Passwords must be 8–72 bytes. bcrypt ignores everything past 72 bytes, so longer passwords are rejected instead of being silently cut short. Login returns the same `401` for a wrong password and an unknown email, and compares against a dummy hash when the email doesn't exist, so response timing doesn't reveal which accounts exist. Registration does reveal it with a `409`; that's the usual trade-off for a clear sign-up error. Tokens are HS256 JWTs (`sub` = user ID) that expire after 7 days and are sent as `Authorization: Bearer …`. The same token will authenticate the Socket.io handshake later. A Bearer header rather than a cookie means no CSRF handling is needed. The cost is that the frontend has to store the token itself. There's no server-side revocation: logout just drops the token on the client. A refresh-token flow isn't worth building for this scope.
 
-### D15 — Expense API shape — 2026-09-24 09:35
+### D15 — Expense API shape — 2026-09-24 09:30
 - **Split input** is tagged by type: `{type:"EQUAL", participants:[id…]}`, `{type:"SHARES", shares:[{userId, shares}]}` or `{type:"EXACT", amounts:[{userId, amount}]}`. Each person may appear once. Shares are whole numbers from 1 to 1000, and a split can have at most 200 people. These caps keep `amount × shares` well inside the range where JavaScript integers are exact, so the rounding math never loses precision.
 - **Edits use `PUT` and replace the whole expense.** The body must include the `version` the client last saw (D10). Partial `PATCH` updates were rejected because a split only makes sense alongside its amount, and merging the two would be error-prone.
 - **Closed groups** block deleting expenses as well as creating and editing them (D8). Deleting changes balances just as much as editing does.
@@ -55,7 +55,7 @@ Passwords are hashed with bcrypt (cost 12) using `bcryptjs`, which is pure JS an
 - **owingSince (D7)** is already updated inside every locked money write, although the reminder job comes later. That way the later milestone doesn't have to rebuild history.
 - **`GET /groups/:id/balances`** reads the balances and `ledgerVersion` in one `REPEATABLE READ` snapshot, so the two always match. Every member is listed, even at 0. Members can't leave a group (agreed 2026-09-23), but if a future change lets them, anyone who's no longer a member but still has a non-zero balance stays listed rather than their balance silently vanishing.
 
-### D16 — Groups, roles and invites — 2026-09-24 09:40
+### D16 — Groups, roles and invites — 2026-09-24 09:38
 - **Roles.** Only the owner (the group's creator) can change settings, close or reopen the group, or replace the invite link. Any member can invite people, by email or by sharing the link. Owners can't be transferred yet.
 - **Two kinds of invite.** The shareable link (`Group.inviteToken`) lets anyone who has it join. The owner can replace it, and the old link then stops working. An email invite (`GroupInvite`) is personal: only the account whose email matches can accept it. It expires after 7 days. Re-inviting the same address issues a new token and expiry and sends a new email, and the old link stops working. A new user registers with the invited email, then accepts. Keeping registration separate from invites keeps the auth code simple.
 - **Invite previews are public** (`GET /api/invites/link/:token`, `GET /api/invites/email/:token`), so the page can show the group before the person logs in. The preview shows only what the token holder was already meant to see.
@@ -65,7 +65,7 @@ Passwords are hashed with bcrypt (cost 12) using `bcryptjs`, which is pure JS an
 - **Close/reopen don't bump `ledgerVersion`.** No money changes. Clients get the status from the group itself.
 - **The closing summary email is deferred** to the settlement milestone, because it should list the suggested transfers.
 
-### D17 — Repayments and the settlement plan — 2026-09-24 10:05
+### D17 — Repayments and the settlement plan — 2026-09-24 09:59
 - **Lifecycle.** The payer proposes (`PENDING`). The recipient confirms (`CONFIRMED`) or rejects (`REJECTED`), or the payer cancels (`CANCELLED`). Only a pending payment can change, and the status is re-read under the group row lock, so a confirm racing a reject can't both succeed. Only `CONFIRMED` counts toward balances (D3). Confirming is therefore the only money write here: it bumps `ledgerVersion` and updates `owingSince` (D4, D7). Reject and cancel only take the lock.
 - **Cancel was added** (not in the original spec) so a payer can withdraw a mistaken proposal without waiting for the recipient to reject it.
 - **Proposal cap.** The payer must currently owe money. The amount can't exceed what they owe, minus their own payments still awaiting confirmation. This catches typos and double submissions. The recipient can be any other member. The cap applies only when proposing: if an expense is later edited so a confirmed payment covers too much, the balance flips sign as intended (D3).
@@ -73,7 +73,7 @@ Passwords are hashed with bcrypt (cost 12) using `bcryptjs`, which is pure JS an
 - **Settlement plan** (`GET /groups/:id/settlement`) comes from confirmed balances only. Pending payments aren't counted, because they might be rejected. The response includes `method: "exact" | "greedy"` (D6). The exact search splits people into the most zero-sum groups, then settles each group greedily. Within a group that can't be split further, greedy's k−1 transfers is already the minimum. Plans are deterministic: the same balances always give the same transfers.
 - **Closing summary email** (`GROUP_CLOSED_SUMMARY`), one per member, built in the closing transaction. It lists final balances, the full plan, and that member's own part ("You pay Alice €30.00."). Amounts are formatted with the group currency's minor units (e.g. `¥3,000`, `KWD 0.001`).
 
-### D18 — Real-time sync — 2026-09-24 10:15
+### D18 — Real-time sync — 2026-09-24 10:13
 - **Rooms.** Clients authenticate the Socket.io handshake with the same JWT as the REST API (D14). They then explicitly join the room for each group they're viewing (`group:join`), and only members may join. A non-member gets the same "Group not found" as a missing group. Joining, rather than auto-subscribing to every group, means a client only receives updates for what's on screen.
 - **What triggers a broadcast.** Every committed change that affects what a group's viewers see: expense create/edit/delete, payment proposed/confirmed/rejected/cancelled, settings change, close/reopen, and a member joining. Failed and no-op requests broadcast nothing. Broadcasts are sent after the transaction commits, never from inside it, so clients never see a change that later rolls back.
 - **The event carries a snapshot, not a diff.** `group:update` = `{ groupId, change: { type, id?, actorId }, ledgerVersion, group, balances, settlement, pendingPayments }`, read in one `REPEATABLE READ` snapshot. Clients just replace their state. The join ack carries the same snapshot, so a (re)connecting client is current immediately without a separate REST call.
@@ -81,7 +81,7 @@ Passwords are hashed with bcrypt (cost 12) using `bcryptjs`, which is pure JS an
 - **Single process.** The per-group queue and the room registry live in memory. Running several API instances would need the Socket.io Redis adapter and a shared ordering mechanism; out of scope here.
 - **Dev tooling.** `/dev/realtime` (a static test page, not served in production) and `npm run watch` (a terminal client) exist for manual testing.
 
-### D19 — Debtor reminder job — 2026-09-24 10:40
+### D19 — Debtor reminder job — 2026-09-24 10:39
 - **When a reminder is due.** A member who owes money (`owingSince` set, D7) gets their first reminder once they've owed for the group's `reminderDays`. After that it repeats every `reminderDays`, but never more often than once every 7 days, measured from `lastRemindedAt`. So `reminderDays = 1` means "after a day, then weekly", and `reminderDays = 14` means "every two weeks". The rule is a pure function, `isReminderDue(member, reminderDays, now)`.
 - **Settled debts are never reminded.** Settling clears `owingSince` inside the same locked transaction as the payment confirmation (D4, D7). The job picks candidates without a lock, then re-checks each group under its row lock before sending. A debt settled in the gap therefore gets no email, and two overlapping runs can't both remind the same person. A partial repayment doesn't reset the schedule: it's still the same debt.
 - **The weekly cap also applies across debts.** `lastRemindedAt` isn't cleared when a debt is settled. If someone settles and then owes again within a week, the next reminder waits until 7 days after the previous one. That's slightly stricter than "once a week per debt", but it means nobody gets two reminders from one group in the same week.
@@ -90,42 +90,42 @@ Passwords are hashed with bcrypt (cost 12) using `bcryptjs`, which is pure JS an
 - **Scheduling.** An in-process `setInterval` runs every `REMINDER_INTERVAL_MS` (default 1 hour), plus once at startup. A run that's still going makes the next tick a no-op. Each group is its own transaction, so one failing group doesn't block the others and is retried on the next run. A missed tick (e.g. the server was down) just means the reminder goes out on the next run after that. Several API instances would still be correct thanks to the row lock, but they'd duplicate the candidate scan; a real job queue is listed under next steps.
 - **Testing without waiting.** Every run takes an explicit `now`, and the scheduler takes an injectable clock, so tests replay weeks of hourly runs in a few seconds.
 
-### D20 — Frontend stack and structure — 2026-09-24 12:30
+### D20 — Frontend stack and structure — 2026-09-24 12:24
 React 19 + TypeScript + Vite, Tailwind CSS 4 (via its Vite plugin, no config file), React Router, `socket.io-client`, and `roughjs` for hand-drawn strokes. TypeScript is pinned to 5.x, as in the backend (D1). In development, Vite proxies `/api` and `/socket.io` to the backend (`API_URL`, default `http://localhost:3000`). The browser therefore sees a single origin, and the backend's CORS setting doesn't come into play. A production deployment is expected to serve the built frontend and the API from the same origin as well. The client-side URLs match the links the backend already puts in emails: `/join/:token` for the shareable link, `/invites/:token` for email invites, and `/groups/:groupId` for reminders. `/design` is a living style guide, included in dev builds only. `frontend/node_modules` is a symlink to `/goinfre`, because the home partition is nearly full.
 
-### D21 — Visual language: ink on paper — 2026-09-24 12:30 (colour revised in D23)
+### D21 — Visual language: ink on paper — 2026-09-24 12:24 (colour revised in D23)
 - **Palette.** Warm white paper (`#fdfcf9`) with charcoal ink (`#1f1e1c`) and two lighter inks for secondary text and dividers. There's one accent, a muted fountain-pen blue (`#2f4f96`). It's used only for the primary action on a screen and for the underline of the field being edited. Blue was chosen over ink-red because in a money app red reads as "debt" or "error", and a primary button shouldn't look like either. Errors therefore don't get a color of their own: they're charcoal text with a hand-drawn ✗, plus `role="alert"` and `aria-invalid`.
 - **Type.** Kalam for headings, button labels and field labels. IBM Plex Sans for body text, data and every amount, using tabular figures so money columns line up.
 - **Strokes.** Every border, underline, check mark and arrow is drawn by rough.js as SVG paths in a single `<RoughLayer>`. The layer measures its parent's untransformed layout size, so a tilted card still gets a matching outline. It redraws only when that size or its options change. Each component gets a fixed seed from `useId`, so lines don't jitter on re-render. The one deliberate exception is buttons, which re-sketch their outline on hover.
 - **Imperfection, within limits.** Cards lean by up to 0.8° (a fixed angle per card) and can have a strip of tape. Grids are staggered. The primary button's fill is printed 3 px off-register from its outline. Cards holding forms or long tables use `tilt={0}`, because rotated inputs are awkward to use.
 - **Forms.** Fields are written on a hand-drawn line instead of sitting in a box. The split-type picker circles the chosen option. All controls are native inputs underneath (visually hidden radios and checkboxes), so keyboard use, screen readers and form behavior work as usual. Focus shows a dashed accent outline.
 
-### D22 — Activity feed endpoint — 2026-09-24 12:50
+### D22 — Activity feed endpoint — 2026-09-24 12:27
 - **Shape.** `GET /api/groups/:groupId/activity?limit=&before=` returns `{ activities: [{ id, type, actor: { id, name }, data, createdAt }], nextCursor }`, newest first. `data` is the snapshot stored when the change was made (D9): the expense or payment as it was, `{ before, after }` for edits and settings changes, or the invitee's email for an invite. Users are referenced by id, and the client resolves names from the member list. The only thing joined in is the actor's name.
 - **Paging.** `limit` is 1–100 (default 30). `before` is the id of the last entry already seen, and `nextCursor` is `null` on the last page. Paging is keyset on `(createdAt, id)` rather than offset, so entries added while someone is scrolling don't shift later pages (no duplicates, no gaps). The id breaks ties between identical timestamps. An unknown cursor, or one from another group, gets `400`. The existing `(groupId, createdAt)` index covers the query.
 - **Visibility.** Members only; outsiders get `404` as elsewhere (D15). Every snapshot was already visible to members through other endpoints, so nothing new is exposed.
 - **Real time.** `group:update` (D18) doesn't carry activity. On each update, the group view refetches the first page. Every change that writes an activity row also broadcasts, so the feed can't fall behind.
 
-### D23 — Name, colour and front page (review feedback on D21) — 2026-09-24 13:20
+### D23 — Name, colour and front page (review feedback on D21) — 2026-09-24 12:41
 - **Name.** The app is called **Esep**. The wordmark is heavy Kalam, tilted slightly, over a yellow highlighter swipe, with a small hatched coin doodle beside the "p". It appears large on the front page and in the app header.
 - **Red means you owe, green means you're owed.** This replaces D21's rule that meaning was never shown by color. Brick red (`#c0392b`) marks debts and green (`#2e7d4f`) marks money owed to you. Both are ink-like rather than signal-bright, and both pass 4.5:1 contrast on the paper color. The words ("owes", "is owed", "you owe") always appear next to the amount, so color is never the only cue. `<Balance>` handles this in one place. Settlement arrows are drawn in red, because they show money that is still owed.
 - **More color, each with a job.** Fountain-pen blue stays reserved for primary actions and the field being edited. Highlighter yellow emphasizes a few words. Cards can take a pale sticky-note fill (`sticky`, `sky`, `blush`, `mint`, `lilac`) and a strip of striped washi tape. Members get hatched crayon-colored avatars with their initial, colored by a stable hash of their id. Stamps are inked in the color of their meaning: red for closed, blue for pending, green for settled.
 - **Front page.** `/login` and `/register` are one page with its own layout (no app header). It has the big wordmark, a one-line pitch, a colored sample group showing balances and the settle-up plan, four feature notes, and the auth form in a plain white card so the form stays the easiest thing to read. The form isn't connected to the API yet; that comes with the auth screens.
 - **Technical note.** Theme tokens are declared with `@theme static`. By default Tailwind 4 drops variables that no utility class uses, but the SVG strokes read them through `var()`. Without `static`, those fills would silently render black.
 
-### D24 — Frontend auth and end-to-end tests — 2026-09-24 14:00
+### D24 — Frontend auth and end-to-end tests — 2026-09-24 12:48
 - **Session.** The JWT from login or registration is kept in `localStorage` (the frontend holds the token, per D14). On start-up a stored token is checked with `GET /auth/me`. Any later `401` on an authenticated request logs the user out. The trade-off: script injected into the page could read the token. React escapes all rendered text and the app renders no user-supplied HTML, which keeps that risk low. An httpOnly cookie would remove it but would need CSRF handling (D14 chose the header deliberately). If `localStorage` is unavailable, the app still works and you just log in again next time.
 - **Where you land.** Logged-out visitors to any app URL are sent to `/login?next=<where they were going>` and return there after logging in or signing up. This matters most for invite links: the page recognizes `/join/…` and `/invites/…` and says "You've been invited!". `next` must be a same-site path. Anything starting with `//` or `/\` is ignored, so the parameter can't redirect people to another website.
 - **Errors.** Field-level validation messages from the API (`issues`) appear under the matching field. Anything else (wrong password, email taken, server unreachable) appears in a boxed notice above the button.
 - **End-to-end tests.** Playwright drives the system Chrome (`channel: "chrome"`, no browser download) against a real backend on port 3100 and Vite on port 5199, so they don't clash with `npm run dev`. They use the dev database. All test users have `@e2e.test.local` emails, and a global teardown (`backend/scripts/e2e-cleanup.ts`) deletes them and everything they created. Screens are tested the way people use them: through labels, roles and visible text.
 
-### D25 — Groups list — 2026-09-24 14:30
+### D25 — Groups list — 2026-09-24 12:51
 - Each group is a sticky-note card showing your own balance in that group, in red or green (D23). `GET /groups` doesn't include balances, so the page fetches `GET /groups/:id/balances` for each group in parallel. That's fine for the handful of groups one person has. A failed fetch shows "balance unavailable" on that card only. If people end up with dozens of groups, adding `myNet` to the list endpoint would turn this into one request.
 - Repayments that only you can confirm (`GET /payments/pending`, incoming) are flagged at the top with a link to the group. Outgoing ones aren't: nothing is waiting on you.
 - Creating a group asks for the name, currency (every ISO code the browser knows, common ones first) and reminder interval, then opens the new group.
 - `Card` is now a named region (`aria-labelledby` its title), so screen readers announce "Waiting for you" and similar sections by name.
 
-### D26 — Group view and live updates in the client — 2026-09-24 15:20
+### D26 — Group view and live updates in the client — 2026-09-24 12:59
 - **Where the data comes from.** Group details (members, invite token, settings) come from `GET /groups/:id`. The live part (balances, settlement plan, pending repayments, status) comes from the Socket.io room: the `group:join` ack carries the current snapshot, and each `group:update` replaces it. Updates are applied in arrival order, which the server guarantees is commit order (D18). `member.joined` and `group.settings_updated` also reload the details, since those aren't in the snapshot. The socket re-joins the room on every reconnect, because rooms don't survive one.
 - **Without a socket.** If the socket reports an error, or simply hasn't connected within 3 seconds (a proxy can accept the upgrade and then drop it silently), the screen loads over REST and the indicator says "offline, reconnecting…". After changes made on this screen, the client re-reads over REST while offline. A REST read never replaces a snapshot with a higher `ledgerVersion`, and the timed fallback only fills an empty screen, so it can't overwrite a live update.
 - **Layout.** Your own position comes first (red or green, D23), with "Record a repayment" as the one primary action. Next come pending repayments, everyone's balances, and the settle-up plan, where your own transfers have "I paid this" (the form opens prefilled and scrolls into view). The activity feed and members are in the second column, or last on a phone.
@@ -135,7 +135,7 @@ React 19 + TypeScript + Vite, Tailwind CSS 4 (via its Vite plugin, no config fil
 - **Invite link.** It's built from the page's own origin rather than the backend's `APP_URL`, so it's right wherever the frontend is served.
 - **Close/reopen.** Owner only. Closing asks for confirmation first, because it emails everyone a summary.
 
-### D27 — Add-expense form and split preview — 2026-09-24 15:50
+### D27 — Add-expense form and split preview — 2026-09-24 13:02
 - **Live preview.** While you type, each person's share appears next to their name, using a client-side copy of the server's split rules (largest remainder, ties by join order, D5). A unit test imports the backend's `resolveSplit` directly and checks the copy against it on 5,000 random EQUAL and SHARES splits, including totals up to the 2³¹ limit, so the two can't drift apart unnoticed. The server stays the authority: the preview is never sent, only the split input.
 - **Split modes.** Equally (tick who's in, with "everyone" / "no one" shortcuts), by shares (whole numbers from 0 to 1000; 0 leaves someone out), or exact amounts (blank means not in the split). Exact mode keeps a running "€5.00 left to assign" / "€5.00 too much" / "✓ adds up" line, and saving is blocked until the parts match the total.
 - **Validation.** Everything the client can check is checked before sending: description, amount (via `parseAmount`, never floats), shares and parts, at least one person. Server field errors land on the matching field. Other server errors appear in a notice.
@@ -143,26 +143,28 @@ React 19 + TypeScript + Vite, Tailwind CSS 4 (via its Vite plugin, no config fil
 - **Placement.** "+ Add an expense" is the page's primary action, and "Record a repayment" became a regular button beside your balance. In a closed group the add button is replaced by a note (D8).
 - **Built for editing too.** The form takes an optional existing expense and sends `PUT` with its `version` (D10). The edit screen will reuse it.
 
-### D28 — Group view hierarchy — 2026-09-25
+### D28 — Group view hierarchy — 2026-09-25 10:43
 - **Order.** Top to bottom: the group's name and status, a folded "Members & invite" line, "+ Add an expense", then the money, then the activity feed (beside the money on wide screens, below it on a phone). Replaces the D26 layout, where balances, the plan and members were separate cards of equal weight.
 - **One money card.** Your position ("you owe €22.00", with "Record a repayment"), then everyone's balance, then "To settle up" with "I paid this" on your own transfers, all in one card. When nobody owes anything the card says only "you're all settled up": no list of zero balances, no empty plan. Pending repayments stay a separate card because they ask someone to act.
 - **Members folded away.** A `<details>` under the group name shows the member avatars and opens to the list and the invite link. It starts open while you're the only member, since inviting people is the next step then.
 - **A fresh group.** Until the first expense or repayment (`ledgerVersion` is still 0), the page shows only "Add your first expense to get started." and the button: no balance card, no "settled up". "Settled up" only appears once money has actually moved. The activity feed leaves out "started the group" and stays hidden until something real has happened (someone joining counts).
-- **Where you are.** The current page's header link gets a highlighter swipe; "my groups" stays marked inside a group.
-- **Header and page tone.** The current page's link gets a pale sticky-note fill behind it (its text doesn't change). "log out" is a small red outlined button, a new `danger` Button variant for leaving or destroying things. The groups list sits on a warmer cream (`--color-cream`) so it reads as a desk of notes rather than a blank page. Page titles (group name, My groups, How Esep works) are 30–36 px, so they no longer dominate.
+- **Header and page tone.** The current page's link gets a pale sticky-note fill behind it (its text doesn't change); "my groups" stays marked inside a group. "log out" is a small red outlined button, a new `danger` Button variant for leaving or destroying things. The groups list sits on a warmer cream (`--color-cream`) so it reads as a desk of notes rather than a blank page. Page titles (group name, My groups, How Esep works) are 30–36 px, so they no longer dominate.
 
-### D29 — Viewing and editing an expense — 2026-09-25
+### D29 — Viewing and editing an expense — 2026-09-25 11:18
 - **Where.** `/groups/:groupId/expenses/:expenseId` (the link in the activity feed and in emails) renders the group page with the expense in place of the add button, so the balances and feed stay in view and live updates keep working. The card shows who paid, the date, the category and each person's part, and names any current members who aren't in the split.
 - **Edit.** "Edit" swaps in the D27 form with the expense loaded. It lists everyone in the group now, not just the people in the original split, so an expense added before someone joined can be changed to include them. The server already checks participants against current members and the `version` (D10); a stale version shows the conflict message.
 - **Adding while alone.** "+ Add an expense" stays enabled in a one-member group. A note under it says the expense is split only among current members and suggests inviting others first. It doesn't block anything, since the split can be edited later.
+- **Considered and rejected.**
+  - *Disabling "+ Add an expense" in a one-member group.* Built, then reverted before commit: paying for something before inviting anyone is a normal way to start a trip, and the split can be edited once the others join.
+  - *Re-splitting old expenses automatically when someone joins.* The new member would suddenly owe a share of costs from before they joined. Including them stays a deliberate edit of that expense.
 
-### D30 — Join-by-link page — 2026-09-25
+### D30 — Join-by-link page — 2026-09-25 11:45
 - **Public page.** `/join/:token` no longer sits behind the login redirect. It shows the group's name, currency and member count first, so people know what they're joining before they create an account. Logged out, it offers "Log in to join" and "Sign up", both with `?next=/join/:token` (D24), so they come back to the same page and still have to press "Join group". Joining never happens without that click.
 - **Preview endpoint.** `GET /api/invites/link/:token` now also returns `currency` and `alreadyMember`, and, only for a logged-in caller who is already a member, the `groupId`. It uses a new `optionalAuth` middleware: a missing or bad token means anonymous, not a 401. Everyone else still gets only what the link holder was meant to see (D16), with no group id.
 - **Already a member** is sent straight to the group. Joining again would also succeed (D16), but there's nothing to confirm.
 - **Errors.** An unknown or replaced token shows "This invite link doesn't work" with a hint to ask for a fresh link. A closed group's link shows the group but explains it isn't taking new members.
 
-### D31 — Email-invite page — 2026-09-25
+### D31 — Email-invite page — 2026-09-25 12:12
 - **Same shape as the join link (D30), tied to one address.** `/invites/:token` is public. It shows the group (name, currency, member count), who sent the invite and which address it's for. Accepting always takes a click on "Accept and join".
 - **Logged out.** "Log in to accept" and "Sign up" carry `?next=/invites/:token&email=<invited address>`. The log-in form starts with that email filled in (it can still be changed). The sign-up form locks it: it's the only address that can accept (D16), so an account made with any other one couldn't use the invite anyway. The `email` parameter is only used when `next` is an `/invites/` path, and the server still checks the address on accept.
 - **Logged in as someone else.** The page says which address the invite is for and which one you're logged in with, and offers "Log out and switch", which goes to the log-in form with the invited address filled in. There's no accept button to fail.
@@ -170,12 +172,12 @@ React 19 + TypeScript + Vite, Tailwind CSS 4 (via its Vite plugin, no config fil
 - **Preview endpoint.** `GET /api/invites/email/:token` gains `currency`, `memberCount`, `closed` and `alreadyMember` (plus `groupId` for members), using `optionalAuth` like the link preview.
 - **Testing.** The e2e tests read invite tokens with `backend/scripts/e2e-invite.ts`, which only works for `@e2e.test.local` addresses and can also expire an invite.
 
-### D32 — Sending email invites from the group page — 2026-09-25
+### D32 — Sending email invites from the group page — 2026-09-25 12:12
 - **Where.** Under the invite link in "Members & invite": an email field and "Send invite", calling the existing `POST /api/groups/:id/invites`. Any member can send one (D16); it's hidden in a closed group, which doesn't take invites.
 - **Feedback.** "✓ Invite sent to …", plus a note that email is stubbed and the backend prints the message (with the accept link) in its console (D11). Server errors show where they belong: a bad address next to the field, "already a member" in a notice.
 - **Pending list.** "Invited, not joined yet" lists `pendingInvites` from the group details with each expiry date. It refreshes after sending and when someone joins. The accept link itself is never shown to the sender: it's meant for the invitee's inbox.
 
-### D33 — Expense notifications — 2026-09-28
+### D33 — Expense notifications — 2026-09-28 10:58
 - **Who is notified.** Everyone the expense involves, minus the person who made the change: everyone in the split **and the payer** (paying changes your balance even if you're not in the split). On an edit, people in the split before *or* after, so someone taken out of an expense hears about it. On a delete, everyone who was involved. Members not involved, and non-members, get nothing.
 - **Written with the change.** One `Notification` row per recipient, created in the same transaction as the expense write and its activity entry. A change that fails creates none. The row stores a snapshot: the actor, the expense's description and amount, the recipient's own share, and on edits their share before.
 - **Live delivery.** Every authenticated socket joins its user's own room (`user:<id>`) on connect, using the same handshake JWT as the group rooms (D18). No join event is needed, and nothing else can join that room. After commit the server emits `notification:new` to each recipient's room; the payload is the same shape as the REST list. Marking as read emits `notification:read` with the new unread count, so a user's other tabs stay in step.
@@ -183,20 +185,20 @@ React 19 + TypeScript + Vite, Tailwind CSS 4 (via its Vite plugin, no config fil
 - **UI.** A "notifications" button in the header with a red unread count opens a panel with the latest 20: who changed what, the amount, your share (or how it changed), the group and when. Opening one marks it read and goes to the expense (or to the group, if the expense was deleted). "mark all as read" clears the lot. The list reloads on every socket (re)connect to pick up anything missed, and a REST read that a live event overtook is retried rather than applied.
 - **Scope.** In-app only, no email. Payment and reminder notifications (the other `NotificationType` values) aren't written yet.
 
-### D34 — Groups list: one request, combined totals, live refresh — 2026-09-28
+### D34 — Groups list: one request, combined totals, live refresh — 2026-09-28 11:10
 - **One request.** `GET /api/groups` now returns each group with `myNet` (your balance in it) and `totals`, replacing the page's one-balances-request-per-group pattern (D25). `myNet` comes from a single SQL query over all your groups, using the same formula as `computeBalances` (D3), grouped by group. The groups and the balances are read in one repeatable-read transaction so they agree. A test checks `myNet` against `computeBalances` on random histories with expenses, deletes, pending and confirmed repayments, and closed groups.
 - **Totals per currency.** One line per currency: `owe` (sum over groups where you're behind), `owed` (sum where you're ahead), `net` and `groupCount`. Closed groups count, since their debts are still real (D8). Currencies are never converted or added together. The card at the top of the page shows the net for each currency. When you owe in some groups and are owed in others, it also shows both halves, because those are debts to different people and don't actually cancel out.
 - **Live refresh.** Every change that already broadcasts a group update (D18) also sends `groups:changed` `{ groupId, type }` to each member's own socket room (D33), whether or not they're looking at that group. The groups page re-reads `GET /groups` and the pending repayments on each one, and on every socket connect so nothing missed while offline stays stale. The event only says *that* something changed; the REST read is the source of truth.
 - **One socket per tab for the user room.** The notifications menu and the groups page share it (`lib/userSocket.tsx`). The group page keeps its own socket for the group room.
 
-### D35 — Expense list and deleting from the UI — 2026-09-28
+### D35 — Expense list and deleting from the UI — 2026-09-28 11:22
 - **List.** An "Expenses" card under the balance card (and any pending repayments) lists the group's live expenses: description, who paid, date, category, amount, and your share ("not in it" when you aren't in the split). Each row opens the expense view (D29), and the open one is highlighted. Hidden in a fresh group, like the balance card.
 - **Order and paging.** Newest first by the expense's *date*, then by when it was recorded, which is what people scan for. It isn't the order it was entered in; that's the feed's job. `GET /api/groups/:id/expenses` now takes `?limit=` (default 20, max 100) and `?before=<expense id>`, keyset-paged on `(date, createdAt, id)` like D22, and returns `nextCursor`. A cursor expense that has since been deleted still works. The UI shows 10 and then "Show more".
 - **Live.** On every group update (D18) the list re-reads as many rows as it's showing, from the top. Unlike the feed (D22), which only ever grows, expenses can be edited or disappear, so pages already loaded can't just be kept.
 - **Delete.** A red "Delete" next to "Edit" on the expense view, hidden in closed groups (D8). It asks first. The confirmation names the expense and amount, and says that balances are recalculated at once, that repayments already made stay as they are (so someone who repaid their share will be shown as owed it back), and that the feed keeps a record. Confirming soft-deletes it (D9) and returns to the group page. Everyone watching gets the new balances, plan, list and feed live. Anyone who had that expense open is told it was deleted.
 - **After a confirmed repayment.** Nothing special happens: balances are always derived from live expenses plus confirmed repayments (D3), so the repayment now shows as money the recipient owes back, the settle-up plan suggests returning it, and the balances still sum to zero. Reversing a repayment automatically would erase something that really happened.
 
-### D36 — Receipts — 2026-09-28
+### D36 — Receipts — 2026-09-28 11:37
 - **One per expense, sent with the expense.** `POST` and `PUT /api/groups/:id/expenses` also accept `multipart/form-data`: the same JSON as before in an `expense` field, plus an optional `receipt` file. Plain JSON still works. The file and the expense are saved together or not at all: the file is written first, and removed again if the expense write fails (validation, closed group, stale `version`). A separate upload endpoint would have allowed an expense saved without its receipt, or a receipt with no expense.
 - **What's accepted.** JPEG, PNG, WebP and PDF, up to 5 MB (`413` above that). The type is **detected from the file's first bytes**; the file name and the browser's declared type are ignored (`415` otherwise), so an SVG or text file renamed `.png` is refused. The stored display name gets the extension that matches the content. Parsing is done by `multer` (memory storage, one file, 5 MB cap), because it's the standard Express multipart parser and enforces those limits while the upload is streaming in.
 - **Storage.** Local disk in `UPLOADS_DIR` (default `backend/uploads/`, ignored by git), under a random 128-bit hex name with the detected extension. The database keeps that name, the detected type, the uploader's file name (cleaned, for display only) and the size. A CHECK constraint makes the four columns all set or all null. The stored name never appears in the API.
