@@ -18,6 +18,7 @@ npx prisma migrate dev          # apply migrations + generate the client
 npm run dev                     # API on http://localhost:3000
 npm test                        # needs the database running
 ```
+Receipt files are stored in `backend/uploads/` (git-ignored); set `UPLOADS_DIR` to put them elsewhere.
 
 ## Frontend
 

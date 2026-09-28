@@ -166,7 +166,12 @@ model Expense {
   date        DateTime  @db.Date
   comment     String?
   splitType   SplitType
-  receiptPath String? // relative path on local disk
+  // Receipt (D36): all four are set together or all null. receiptPath is a
+  // random file name inside UPLOADS_DIR, never shown to clients.
+  receiptPath String?
+  receiptMime String? // detected from the file's content, not its name
+  receiptName String? // the uploader's file name, for display only
+  receiptSize Int?
   createdById String
   version     Int       @default(1) // optimistic lock for concurrent edits
   createdAt   DateTime  @default(now())

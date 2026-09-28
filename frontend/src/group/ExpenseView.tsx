@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { api, ApiError, errorMessage } from "../lib/api";
+import { api, ApiError, apiBlob, errorMessage } from "../lib/api";
+import { formatBytes } from "../lib/receipt";
 import { formatDay } from "../lib/time";
-import type { Expense } from "../lib/types";
+import type { Expense, Receipt } from "../lib/types";
 import { useAction } from "../lib/useAction";
 import { useApi } from "../lib/useApi";
 import { Button, Card, Loading, Money, Notice } from "../ui";
@@ -72,6 +73,7 @@ export function ExpenseView({ expenseId, changeCount }: { expenseId: string; cha
           {CATEGORIES.find((c) => c.value === e.category)?.label ?? e.category}
         </p>
         {e.comment && <p className="mt-1 text-ink-soft">“{e.comment}”</p>}
+        {e.receipt && <ReceiptPreview key={`${e.id}-${e.version}`} expenseId={e.id} receipt={e.receipt} />}
         <ul className="mt-4 space-y-2" aria-label="Split">
           {e.splits.map((s) => (
             <li key={s.userId} className="flex items-center gap-3">
@@ -144,5 +146,57 @@ function DeleteExpense({ expense }: { expense: Expense }) {
       </div>
       {action.error && <Notice>{action.error}</Notice>}
     </div>
+  );
+}
+
+// The receipt, fetched with the login token (it's never a public URL, D36) and
+// shown from a local blob: a thumbnail for a photo, a link for a PDF. Either
+// opens in a new tab.
+function ReceiptPreview({ expenseId, receipt }: { expenseId: string; receipt: Receipt }) {
+  const { groupId } = useGroup();
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    let objectUrl: string | null = null;
+    apiBlob(`/groups/${groupId}/expenses/${expenseId}/receipt`, { signal: ctrl.signal })
+      .then((blob) => {
+        if (ctrl.signal.aborted) return;
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      })
+      .catch((err) => {
+        if ((err as Error).name !== "AbortError") setError(errorMessage(err));
+      });
+    return () => {
+      ctrl.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [groupId, expenseId]);
+
+  const image = receipt.mime.startsWith("image/");
+  const label = `${receipt.name} · ${formatBytes(receipt.size)}`;
+  return (
+    <section aria-label="Receipt" className="mt-4">
+      {error ? (
+        <Notice>Couldn't load the receipt: {error}</Notice>
+      ) : !url ? (
+        <p className="text-sm text-ink-soft">Loading the receipt…</p>
+      ) : (
+        <a href={url} target="_blank" rel="noopener" className="inline-flex flex-col items-start gap-1.5">
+          {image && (
+            <img
+              src={url}
+              alt={`Receipt: ${receipt.name}`}
+              className="max-h-48 max-w-full rounded-sm border border-ink-faint bg-paper object-contain shadow-sm"
+            />
+          )}
+          <span className="text-sm underline decoration-ink-faint underline-offset-2 hover:decoration-ink">
+            {image ? "🧾" : "📄"} Open receipt ({label})
+          </span>
+        </a>
+      )}
+    </section>
   );
 }

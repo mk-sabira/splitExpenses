@@ -41,24 +41,11 @@ export function setUnauthorizedHandler(fn: () => void) {
   onUnauthorized = fn;
 }
 
-export async function api<T>(path: string, init: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
-  const token = tokenStore.get();
-  let res: Response;
-  try {
-    res = await fetch(`/api${path}`, {
-      method: init.method ?? "GET",
-      headers: {
-        ...(init.body !== undefined && { "content-type": "application/json" }),
-        ...(token && { authorization: `Bearer ${token}` }),
-      },
-      body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
-      signal: init.signal,
-    });
-  } catch (err) {
-    if ((err as Error).name === "AbortError") throw err;
-    throw new ApiError(0, "Can't reach the server. Check your connection and try again.");
-  }
+type Init = { method?: string; body?: unknown; signal?: AbortSignal };
 
+// JSON in and out. A FormData body is sent as multipart instead (receipts, D36).
+export async function api<T>(path: string, init: Init = {}): Promise<T> {
+  const res = await send(path, init);
   // A cancelled request can also fail while the body is being read: that must
   // still reject as an abort, not look like a successful empty response.
   const data =
@@ -68,13 +55,42 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
           if (err.name === "AbortError") throw err;
           return null;
         });
-  if (!res.ok) {
-    if (res.status === 401 && token) onUnauthorized();
-    const fields: Record<string, string> = {};
-    for (const issue of data?.issues ?? []) fields[issue.path] ??= issue.message;
-    throw new ApiError(res.status, data?.error ?? `Request failed (${res.status})`, fields);
-  }
+  if (!res.ok) throw failure(res, data);
   return data as T;
+}
+
+// A file behind the API's auth, e.g. a receipt: it can't be a plain link,
+// since the token travels in a header.
+export async function apiBlob(path: string, init: Init = {}): Promise<Blob> {
+  const res = await send(path, init);
+  if (!res.ok) throw failure(res, await res.json().catch(() => null));
+  return res.blob();
+}
+
+async function send(path: string, init: Init) {
+  const token = tokenStore.get();
+  const form = init.body instanceof FormData;
+  try {
+    return await fetch(`/api${path}`, {
+      method: init.method ?? "GET",
+      headers: {
+        ...(init.body !== undefined && !form && { "content-type": "application/json" }),
+        ...(token && { authorization: `Bearer ${token}` }),
+      },
+      body: form ? (init.body as FormData) : init.body !== undefined ? JSON.stringify(init.body) : undefined,
+      signal: init.signal,
+    });
+  } catch (err) {
+    if ((err as Error).name === "AbortError") throw err;
+    throw new ApiError(0, "Can't reach the server. Check your connection and try again.");
+  }
+}
+
+function failure(res: Response, data: { error?: string; issues?: { path: string; message: string }[] } | null) {
+  if (res.status === 401 && tokenStore.get()) onUnauthorized();
+  const fields: Record<string, string> = {};
+  for (const issue of data?.issues ?? []) fields[issue.path] ??= issue.message;
+  return new ApiError(res.status, data?.error ?? `Request failed (${res.status})`, fields);
 }
 
 // Turns any thrown value into a sentence for the UI.

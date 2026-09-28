@@ -115,6 +115,14 @@ export interface Expense {
   createdAt: string;
   updatedAt: string;
   splits: { userId: string; shares: number | null; amount: number }[];
+  receipt: Receipt | null; // the file itself is at /groups/:id/expenses/:id/receipt
+}
+
+// Receipt metadata (backend D36). `mime` is detected from the file's content.
+export interface Receipt {
+  name: string;
+  mime: "image/jpeg" | "image/png" | "image/webp" | "application/pdf";
+  size: number; // bytes
 }
 
 export type ActivityType =

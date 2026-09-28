@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { GroupStatus } from "@prisma/client";
 import { signToken } from "../src/auth/tokens";
 import { prisma } from "../src/db";
+import { deleteReceiptFile } from "../src/receipts/storage";
 
 // Every test file uses its own email suffix, and cleanup() deletes only rows
 // created under it, so test files can run in parallel against the dev database.
@@ -53,6 +54,12 @@ export async function createGroup(
 
 export async function cleanup(suffix: string) {
   const where = { email: { endsWith: suffix } };
+  // Receipt files live on disk, outside the database cascade (D36).
+  const receipts = await prisma.expense.findMany({
+    where: { group: { createdBy: where }, receiptPath: { not: null } },
+    select: { receiptPath: true },
+  });
+  await Promise.all(receipts.map((r) => deleteReceiptFile(r.receiptPath)));
   // Deleting groups cascades to members, expenses, splits, payments and activity.
   await prisma.group.deleteMany({ where: { createdBy: where } });
   await prisma.user.deleteMany({ where });

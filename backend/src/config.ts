@@ -1,3 +1,5 @@
+import path from "node:path";
+
 // Reads and validates environment variables once at startup, so a missing
 // setting fails fast instead of surfacing later as a confusing runtime error.
 
@@ -27,4 +29,6 @@ export const config = {
   appUrl: (process.env.APP_URL ?? "http://localhost:5173").replace(/\/$/, ""),
   // How often the debtor reminder job checks for due reminders (D19).
   reminderIntervalMs,
+  // Receipt files (D36). Ignored by git; never served as static files.
+  uploadsDir: path.resolve(process.env.UPLOADS_DIR ?? path.join(__dirname, "../uploads")),
 } as const;

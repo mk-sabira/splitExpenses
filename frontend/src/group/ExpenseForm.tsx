@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type SubmitEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type SubmitEvent } from "react";
 import { api, ApiError } from "../lib/api";
 import { formatMoney, parseAmount, toInput } from "../lib/money";
+import { checkReceipt, formatBytes, RECEIPT_ACCEPT } from "../lib/receipt";
 import { previewSplit } from "../lib/split";
-import type { Category, Expense, SplitInput, SplitType } from "../lib/types";
+import type { Category, Expense, Receipt, SplitInput, SplitType } from "../lib/types";
 import { useAction } from "../lib/useAction";
 import { Button, Card, Checkbox, Choice, Money, Notice, SelectField, TextField } from "../ui";
 import { MemberAvatar, useGroup } from "./context";
@@ -50,6 +51,9 @@ export function ExpenseForm({ expense, onDone }: { expense?: Expense; onDone: ()
   const [exact, setExact] = useState<Record<string, string>>(() =>
     Object.fromEntries(joinOrder.map((id) => [id, expense && splitOf(id) ? toInput(splitOf(id)!.amount, currency) : ""])),
   );
+  // A new receipt file to upload, or (editing) whether to drop the current one.
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [removeReceipt, setRemoveReceipt] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const action = useAction();
   const ref = useRef<HTMLDivElement>(null);
@@ -104,6 +108,8 @@ export function ExpenseForm({ expense, onDone }: { expense?: Expense; onDone: ()
     if (!total.ok) errs.amount = total.error;
     else if (total.value === 0) errs.amount = "Enter an amount above zero.";
     if ("errors" in built) Object.assign(errs, built.errors);
+    const receiptProblem = receiptFile && checkReceipt(receiptFile);
+    if (receiptProblem) errs.receipt = receiptProblem;
     else if (total.ok && type === "EXACT" && exactSum !== total.value) {
       errs.split = `The parts add up to ${formatMoney(exactSum, currency)}, not ${formatMoney(total.value, currency)}.`;
     }
@@ -119,16 +125,29 @@ export function ExpenseForm({ expense, onDone }: { expense?: Expense; onDone: ()
       comment: comment.trim() || null,
       split: built.split,
     };
+    const json = expense ? { ...body, version: expense.version, ...(removeReceipt && { removeReceipt: true }) } : body;
+    // With a new receipt, the expense and the file go in one multipart request,
+    // so neither is saved without the other (D36).
+    let payload: unknown = json;
+    if (receiptFile) {
+      const form = new FormData();
+      form.append("expense", JSON.stringify(json));
+      form.append("receipt", receiptFile);
+      payload = form;
+    }
     let fieldErrors = false;
     const ok = await action.run(async () => {
       try {
         if (expense) {
-          await api(`/groups/${groupId}/expenses/${expense.id}`, { method: "PUT", body: { ...body, version: expense.version } });
+          await api(`/groups/${groupId}/expenses/${expense.id}`, { method: "PUT", body: payload });
         } else {
-          await api(`/groups/${groupId}/expenses`, { method: "POST", body });
+          await api(`/groups/${groupId}/expenses`, { method: "POST", body: payload });
         }
       } catch (err) {
-        if (err instanceof ApiError && Object.keys(err.fields).length > 0) {
+        if (err instanceof ApiError && (err.status === 413 || err.status === 415)) {
+          setErrors({ receipt: err.message });
+          fieldErrors = true;
+        } else if (err instanceof ApiError && Object.keys(err.fields).length > 0) {
           setErrors(err.fields);
           fieldErrors = true;
         }
@@ -281,6 +300,25 @@ export function ExpenseForm({ expense, onDone }: { expense?: Expense; onDone: ()
             onChange={(e) => setComment(e.target.value)}
             error={errors.comment}
           />
+          <ReceiptField
+            current={expense?.receipt ?? null}
+            file={receiptFile}
+            removing={removeReceipt}
+            error={errors.receipt}
+            onFile={(f) => {
+              setReceiptFile(f);
+              setRemoveReceipt(false);
+              // Say what's wrong with the file straight away, not only on save.
+              const problem = f && checkReceipt(f);
+              setErrors((old) => {
+                const next = { ...old };
+                if (problem) next.receipt = problem;
+                else delete next.receipt;
+                return next;
+              });
+            }}
+            onRemove={setRemoveReceipt}
+          />
           {action.error && <Notice>{action.error}</Notice>}
           <div className="flex items-center gap-4">
             <Button variant="primary" type="submit" disabled={action.busy}>
@@ -292,6 +330,86 @@ export function ExpenseForm({ expense, onDone }: { expense?: Expense; onDone: ()
           </div>
         </form>
       </Card>
+    </div>
+  );
+}
+
+// Optional receipt: pick a file (a photo or a PDF, up to 5 MB). When editing,
+// the current one is shown with "Remove", and picking a file replaces it.
+function ReceiptField({
+  current,
+  file,
+  removing,
+  error,
+  onFile,
+  onRemove,
+}: {
+  current: Receipt | null;
+  file: File | null;
+  removing: boolean;
+  error?: string;
+  onFile: (f: File | null) => void;
+  onRemove: (remove: boolean) => void;
+}) {
+  const id = useId();
+  const input = useRef<HTMLInputElement>(null);
+  const clear = () => {
+    if (input.current) input.current.value = "";
+    onFile(null);
+  };
+  const line = "flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm";
+  return (
+    <div>
+      <label htmlFor={id} className="font-hand text-lg text-ink-soft">
+        Receipt (optional)
+      </label>
+      {file ? (
+        <p className={line}>
+          <span>
+            📎 <span className="font-medium">{file.name}</span> · {formatBytes(file.size)}
+            {current && " (replaces the current one)"}
+          </span>
+          <Button variant="quiet" size="sm" onClick={clear} className="text-base">
+            don't attach
+          </Button>
+        </p>
+      ) : current && !removing ? (
+        <p className={line}>
+          <span>
+            📎 <span className="font-medium">{current.name}</span> · {formatBytes(current.size)}
+          </span>
+          <Button variant="quiet" size="sm" onClick={() => onRemove(true)} className="text-base">
+            remove
+          </Button>
+        </p>
+      ) : current && removing ? (
+        <p className={line}>
+          <span>The receipt will be removed when you save.</span>
+          <Button variant="quiet" size="sm" onClick={() => onRemove(false)} className="text-base">
+            keep it
+          </Button>
+        </p>
+      ) : null}
+      <input
+        ref={input}
+        id={id}
+        type="file"
+        accept={RECEIPT_ACCEPT}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={`${id}-msg`}
+        onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+        className="mt-1 block w-full text-sm text-ink-soft file:mr-3 file:cursor-pointer file:rounded-sm file:border file:border-ink file:bg-paper file:px-3 file:py-1 file:font-hand file:text-base file:text-ink hover:file:bg-sticky"
+      />
+      {error ? (
+        <p id={`${id}-msg`} role="alert" className="mt-1.5 text-sm font-medium text-ink">
+          <span aria-hidden className="mr-1 font-hand text-base font-bold">✗</span>
+          {error}
+        </p>
+      ) : (
+        <p id={`${id}-msg`} className="mt-1.5 text-sm text-ink-soft">
+          {current ? "Choose a file to replace it. " : ""}A photo (JPEG, PNG, WebP) or a PDF, up to 5 MB.
+        </p>
+      )}
     </div>
   );
 }

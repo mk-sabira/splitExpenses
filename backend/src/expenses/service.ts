@@ -4,6 +4,7 @@ import { withGroupLock } from "../ledger/lock";
 import { HttpError } from "../lib/errors";
 import { notifyExpenseChange } from "../notifications/service";
 import { publishGroupUpdate, publishNotifications } from "../realtime";
+import { deleteReceiptFile, receiptFile, type StoredReceipt } from "../receipts/storage";
 import { participantIds, resolveSplit, type SplitInput } from "./split";
 
 export interface ExpenseInput {
@@ -17,6 +18,11 @@ export interface ExpenseInput {
 }
 
 type Tx = Prisma.TransactionClient;
+
+// What an edit does to the receipt (D36).
+export type ReceiptChange = { kind: "keep" } | { kind: "remove" } | { kind: "replace"; receipt: StoredReceipt };
+
+const NO_RECEIPT = { receiptPath: null, receiptMime: null, receiptName: null, receiptSize: null };
 type ExpenseWithSplits = Expense & { splits: ExpenseSplit[] };
 
 const withSplits = { splits: { orderBy: { userId: "asc" } } } as const;
@@ -38,6 +44,8 @@ export function serializeExpense(e: ExpenseWithSplits) {
     createdAt: e.createdAt.toISOString(),
     updatedAt: e.updatedAt.toISOString(),
     splits: e.splits.map((s) => ({ userId: s.userId, shares: s.shares, amount: s.amount })),
+    // Where the file is stored stays on the server; it's fetched by expense id.
+    receipt: e.receiptPath ? { name: e.receiptName!, mime: e.receiptMime!, size: e.receiptSize! } : null,
   };
 }
 
@@ -87,7 +95,14 @@ export async function getExpense(groupId: string, expenseId: string) {
   return serializeExpense(expense);
 }
 
-export async function createExpense(groupId: string, actorId: string, input: ExpenseInput) {
+// `receipt` is already on disk (see withStoredReceipt); if this throws, the
+// caller removes it again.
+export async function createExpense(
+  groupId: string,
+  actorId: string,
+  input: ExpenseInput,
+  receipt: StoredReceipt | null = null,
+) {
   const saved = await withGroupLock(groupId, async (tx, group) => {
     assertOpen(group.status);
     const splits = await resolveForGroup(tx, groupId, input);
@@ -96,6 +111,7 @@ export async function createExpense(groupId: string, actorId: string, input: Exp
         groupId,
         createdById: actorId,
         ...expenseFields(input),
+        ...receipt,
         splits: { create: splits },
       },
       include: withSplits,
@@ -113,13 +129,17 @@ export async function createExpense(groupId: string, actorId: string, input: Exp
 }
 
 // Full replacement of the expense. `version` must match the stored one (D10).
+// A replaced or removed receipt file is deleted once the change has committed;
+// only the metadata survives, in the activity snapshot.
 export async function updateExpense(
   groupId: string,
   expenseId: string,
   actorId: string,
   version: number,
   input: ExpenseInput,
+  receiptChange: ReceiptChange = { kind: "keep" },
 ) {
+  let oldReceipt: string | null = null;
   const saved = await withGroupLock(groupId, async (tx, group) => {
     assertOpen(group.status);
     const current = await findLive(tx, groupId, expenseId);
@@ -128,10 +148,13 @@ export async function updateExpense(
     }
     const splits = await resolveForGroup(tx, groupId, input);
     await tx.expenseSplit.deleteMany({ where: { expenseId } });
+    if (receiptChange.kind !== "keep") oldReceipt = current.receiptPath;
     const expense = await tx.expense.update({
       where: { id: expenseId },
       data: {
         ...expenseFields(input),
+        ...(receiptChange.kind === "remove" && NO_RECEIPT),
+        ...(receiptChange.kind === "replace" && receiptChange.receipt),
         version: { increment: 1 },
         splits: { create: splits },
       },
@@ -147,10 +170,12 @@ export async function updateExpense(
   });
   publishGroupUpdate(groupId, { type: "expense.updated", id: expenseId, actorId });
   publishNotifications(saved.result.notified);
+  await deleteReceiptFile(oldReceipt);
   return { result: saved.result.expense, ledgerVersion: saved.ledgerVersion };
 }
 
-// Soft delete (D9): the row stays for history but no longer counts toward balances.
+// Soft delete (D9): the row stays for history but no longer counts toward
+// balances. Its receipt file stays too, still for members only (D36).
 export async function deleteExpense(groupId: string, expenseId: string, actorId: string) {
   const saved = await withGroupLock(groupId, async (tx, group) => {
     assertOpen(group.status);
@@ -165,6 +190,16 @@ export async function deleteExpense(groupId: string, expenseId: string, actorId:
   publishGroupUpdate(groupId, { type: "expense.deleted", id: expenseId, actorId });
   publishNotifications(saved.result);
   return { ledgerVersion: saved.ledgerVersion };
+}
+
+// The receipt file of an expense in this group, deleted or not (D36).
+export async function getReceipt(groupId: string, expenseId: string) {
+  const e = await prisma.expense.findFirst({
+    where: { id: expenseId, groupId },
+    select: { receiptPath: true, receiptMime: true, receiptName: true },
+  });
+  if (!e?.receiptPath) throw new HttpError(404, "Receipt not found");
+  return { file: receiptFile(e.receiptPath), mime: e.receiptMime!, name: e.receiptName! };
 }
 
 function assertOpen(status: string) {
