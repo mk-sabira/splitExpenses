@@ -11,6 +11,7 @@ async function main() {
   const users = await prisma.user.findMany({ where, select: { id: true } });
   const ids = users.map((u) => u.id);
   await prisma.activity.deleteMany({ where: { actorId: { in: ids } } });
+  await prisma.notification.deleteMany({ where: { userId: { in: ids } } });
   await prisma.groupMember.deleteMany({ where: { userId: { in: ids } } });
   const deleted = await prisma.user.deleteMany({ where });
   await prisma.emailOutbox.deleteMany({ where: { to: { endsWith: "@e2e.test.local" } } });

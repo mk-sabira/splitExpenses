@@ -2,7 +2,8 @@ import type { Category, Expense, ExpenseSplit, Prisma } from "@prisma/client";
 import { prisma } from "../db";
 import { withGroupLock } from "../ledger/lock";
 import { HttpError } from "../lib/errors";
-import { publishGroupUpdate } from "../realtime";
+import { notifyExpenseChange } from "../notifications/service";
+import { publishGroupUpdate, publishNotifications } from "../realtime";
 import { participantIds, resolveSplit, type SplitInput } from "./split";
 
 export interface ExpenseInput {
@@ -77,10 +78,12 @@ export async function createExpense(groupId: string, actorId: string, input: Exp
     await tx.activity.create({
       data: { groupId, actorId, type: "EXPENSE_CREATED", data: after },
     });
-    return after;
+    const notified = await notifyExpenseChange(tx, { groupId, actorId, type: "EXPENSE_ADDED", before: null, after });
+    return { expense: after, notified };
   });
-  publishGroupUpdate(groupId, { type: "expense.created", id: saved.result.id, actorId });
-  return saved;
+  publishGroupUpdate(groupId, { type: "expense.created", id: saved.result.expense.id, actorId });
+  publishNotifications(saved.result.notified);
+  return { result: saved.result.expense, ledgerVersion: saved.ledgerVersion };
 }
 
 // Full replacement of the expense. `version` must match the stored one (D10).
@@ -113,10 +116,12 @@ export async function updateExpense(
     await tx.activity.create({
       data: { groupId, actorId, type: "EXPENSE_UPDATED", data: { before, after } },
     });
-    return after;
+    const notified = await notifyExpenseChange(tx, { groupId, actorId, type: "EXPENSE_UPDATED", before, after });
+    return { expense: after, notified };
   });
   publishGroupUpdate(groupId, { type: "expense.updated", id: expenseId, actorId });
-  return saved;
+  publishNotifications(saved.result.notified);
+  return { result: saved.result.expense, ledgerVersion: saved.ledgerVersion };
 }
 
 // Soft delete (D9): the row stays for history but no longer counts toward balances.
@@ -125,12 +130,15 @@ export async function deleteExpense(groupId: string, expenseId: string, actorId:
     assertOpen(group.status);
     const current = await findLive(tx, groupId, expenseId);
     await tx.expense.update({ where: { id: expenseId }, data: { deletedAt: new Date() } });
+    const before = serializeExpense(current);
     await tx.activity.create({
-      data: { groupId, actorId, type: "EXPENSE_DELETED", data: serializeExpense(current) },
+      data: { groupId, actorId, type: "EXPENSE_DELETED", data: before },
     });
+    return notifyExpenseChange(tx, { groupId, actorId, type: "EXPENSE_DELETED", before, after: null });
   });
   publishGroupUpdate(groupId, { type: "expense.deleted", id: expenseId, actorId });
-  return saved;
+  publishNotifications(saved.result);
+  return { ledgerVersion: saved.ledgerVersion };
 }
 
 function assertOpen(status: string) {

@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet, useMatch } from "react-router";
 import { useAuth } from "./auth/AuthContext";
+import { NotificationsMenu } from "./notifications/NotificationsMenu";
 import { Avatar, Button, Wordmark } from "./ui";
 import { RoughLayer, useSeed } from "./ui/rough";
 
@@ -17,6 +18,7 @@ export function AppShell() {
           {user && <NavItem to="/groups">my groups</NavItem>}
           {user && <NavItem to="/help">help</NavItem>}
           {import.meta.env.DEV && <NavItem to="/design">style guide</NavItem>}
+          {user && <NotificationsMenu key={user.id} userId={user.id} />}
           {user ? (
             <span className="flex items-center gap-2">
               <Avatar name={user.name} colorKey={user.id} size={30} />

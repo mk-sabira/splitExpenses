@@ -5,12 +5,16 @@ import { config } from "../config";
 import { prisma } from "../db";
 import { computeBalances } from "../ledger/balances";
 import { settle } from "../ledger/settlement";
+import type { SerializedNotification } from "../notifications/service";
 import { serializePayment } from "../payments/serialize";
 
 // Real-time sync (D18). Clients connect with their JWT, then join the room of
 // each group they're viewing. After every committed change to a group, its
 // room receives a "group:update" event with a fresh snapshot of the group's
 // balances, settlement plan, status and pending payments.
+//
+// Every socket also joins its user's own room on connect, authenticated by the
+// same handshake. It carries "notification:new" and "notification:read" (D33).
 
 export type ChangeType =
   | "expense.created"
@@ -32,7 +36,10 @@ export interface Change {
 }
 
 export const UPDATE_EVENT = "group:update";
+export const NOTIFICATION_EVENT = "notification:new";
+export const NOTIFICATION_READ_EVENT = "notification:read";
 const room = (groupId: string) => `group:${groupId}`;
+const userRoom = (userId: string) => `user:${userId}`;
 
 let io: Server | null = null;
 
@@ -49,6 +56,8 @@ export function attachRealtime(httpServer: HttpServer): Server {
   });
 
   io.on("connection", (socket) => {
+    void socket.join(userRoom(socket.data.userId));
+
     // Acks with { ok: true, update } where `update` is the current snapshot, or
     // { ok: false, error }. Non-members get the same answer as a missing group.
     socket.on("group:join", async (groupId: unknown, ack?: (res: unknown) => void) => {
@@ -93,6 +102,18 @@ export function publishGroupUpdate(groupId: string, change: Change) {
     if (!server || !server.sockets.adapter.rooms.get(room(groupId))?.size) return; // nobody watching
     server.to(room(groupId)).emit(UPDATE_EVENT, await snapshot(groupId, change));
   });
+}
+
+// Call after the transaction that wrote the notifications has committed.
+export function publishNotifications(notifications: { userId: string; notification: SerializedNotification }[]) {
+  for (const { userId, notification } of notifications) {
+    io?.to(userRoom(userId)).emit(NOTIFICATION_EVENT, notification);
+  }
+}
+
+// Keeps the unread count in step across a user's open tabs. `id` null means all.
+export function publishNotificationsRead(userId: string, read: { id: string | null; unreadCount: number }) {
+  io?.to(userRoom(userId)).emit(NOTIFICATION_READ_EVENT, read);
 }
 
 // Updates for one group are read and sent strictly one after another, in the

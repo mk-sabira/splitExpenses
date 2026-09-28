@@ -8,6 +8,7 @@ import { expensesRouter } from "./expenses/routes";
 import { groupsRouter } from "./groups/routes";
 import { invitesRouter } from "./invites/routes";
 import { balancesRouter, settlementRouter } from "./ledger/routes";
+import { notificationsRouter } from "./notifications/routes";
 import { groupPaymentsRouter, paymentsRouter } from "./payments/routes";
 import { errorHandler, HttpError } from "./lib/errors";
 
@@ -34,6 +35,7 @@ export function createApp() {
   app.use("/api/groups/:groupId/payments", groupPaymentsRouter);
   app.use("/api/groups/:groupId/activity", activityRouter);
   app.use("/api/payments", paymentsRouter);
+  app.use("/api/notifications", notificationsRouter);
   app.use("/api/groups", groupsRouter);
 
   app.use((_req, _res) => {

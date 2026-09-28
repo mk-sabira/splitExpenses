@@ -140,3 +140,23 @@ export interface GroupUpdate {
   settlement: { transfers: Transfer[]; method: "exact" | "greedy" };
   pendingPayments: Payment[];
 }
+
+// In-app notifications (backend D33): REST /api/notifications and the
+// Socket.io "notification:new" / "notification:read" events.
+export type NotificationType = "EXPENSE_ADDED" | "EXPENSE_UPDATED" | "EXPENSE_DELETED";
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  group: { id: string; name: string; currency: string } | null;
+  data: {
+    actor: { id: string; name: string };
+    expenseId: string;
+    description: string;
+    amount: number;
+    share: number | null; // your part of the split; null if you're not in it
+    previousShare?: number | null; // only on EXPENSE_UPDATED
+  };
+  readAt: string | null;
+  createdAt: string;
+}
