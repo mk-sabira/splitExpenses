@@ -54,6 +54,8 @@ cd frontend && npm test          # 34 unit tests, <1 s
 cd frontend && npm run e2e       # 51 end-to-end tests, ~40 s; starts its own API (port 3100) and web server (port 5199)
 ```
 
+On a machine with fewer cores or a slower Docker setup, a few end-to-end tests can time out under the default parallel load. Run `npm run e2e -- --workers=2` for a clean run (a few minutes instead of ~40 s); see the [known issue](STATUS.md#known-issue-intermittent-e2e-failures-under-parallel-load--gone-with-fewer-workers).
+
 **Backend** (Vitest + Supertest, real HTTP against the real database). The claims the task cares about are tested directly:
 - **No lost cents:** 20,000 random splits always add up exactly to the total, and the extra cent always goes by the documented rule: largest remainder, ties to whoever joined first (`split.test.ts`, D5).
 - **Edits and deletes recalculate everything, repayments included:** 80 random create / edit / delete steps with repayments in between, checking balances and invariants after every step, plus a scripted create → repay → edit → delete case (`expenses.test.ts`, D3).

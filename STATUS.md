@@ -2,7 +2,7 @@
 
 An honest record of what works, what's partial, what isn't done and why. It's updated at each milestone, not only at the end. Times are local (UTC+04:00).
 
-**As of 2026-09-28:** the required features are implemented and covered by automated tests; the gaps are listed under [Partial](#partial) and [Not done](#not-done-and-why). Backend: 186 tests. Frontend: 34 unit tests and 51 end-to-end tests in real browsers. All pass, including on a fresh clone with an empty database (checked 2026-09-28).
+**As of 2026-09-28:** the required features are implemented and covered by automated tests; the gaps are listed under [Partial](#partial) and [Not done](#not-done-and-why). Backend: 186 tests. Frontend: 34 unit tests and 51 end-to-end tests in real browsers. All pass on the Linux dev machine, including on a fresh clone with an empty database (checked 2026-09-28). On a Mac with fewer resources, the end-to-end suite fails a few tests per run at default parallelism and passes with `--workers=2`; see the [known issue](#known-issue-intermittent-e2e-failures-under-parallel-load--gone-with-fewer-workers).
 
 ## Timeline
 
@@ -101,7 +101,7 @@ From `git log` (commit times), plus two review steps from the agent session that
 - **A deleted expense's receipt** is kept and the API serves it to members, but nothing in the UI links to it.
 - **Invites and ownership:** no way to revoke a pending email invite or transfer group ownership.
 
-## Known issue: rare intermittent e2e failures in the live-update path — likely fixed, not proven
+## Known issue: intermittent e2e failures under parallel load — gone with fewer workers
 First seen on 2026-09-25, running the full e2e suite in parallel (39 tests at the time, one local backend): **3 failures in 10 full runs**. Each time a single test waited 5 s for something that never appeared. Running the affected test alone (20 repeats) never failed, so load is part of it.
 
 Two failure modes were seen:
@@ -113,6 +113,18 @@ Two failure modes were seen:
 **Safety net added at the same time:** after a change made on the page, the client skips the REST read-back only once the socket has actually joined the group's room, not merely connected.
 
 **Runs since the fix:** 8 of 8 full runs passed on 2026-09-25. On 2026-09-28, as the suite grew from 42 to 51 tests, 8 more full runs whose result was read all passed (one further run's summary was lost in log output, so its result is unknown). That's 16 of 16 known runs, against 3 failures in the 10 runs before the fix. That's encouraging but it isn't proof, since failure mode 2 was never traced.
+
+**On a second machine (2026-09-29):** the same commit, freshly cloned on a Mac, was run three times. The first two runs used the default number of workers: **46 passed, 5 failed**, then **47 passed, 4 failed**, different tests each time. The third run used `--workers=2` (see below). There was no third run with the default workers. On the same day the Linux dev machine passed **51 of 51**. So the problem isn't gone, and it shows up much more often on a slower or differently configured machine than on the machine the suite was written on.
+- **What this points to.** Different tests each run, and none failing alone, fits load and timing rather than one broken feature. But that doesn't make it harmless: failure mode 1 above was a real bug that only showed up under load. A load-dependent failure can be a slow machine hitting a timeout or a real race that load makes likely, and the Mac results don't tell the two apart.
+- **What wasn't captured.** The error messages and traces from the two failing Mac runs weren't read, so it isn't known whether those tests waited too long for something that did arrive, waited for something that never arrived, or hit an error screen.
+- **Timeouts, checked against a run on the dev machine** (2026-09-29, 10 parallel workers, 51/51 in 40 s):
+  - *Test timeout, 30 s* (Playwright's default). The slowest test took 10.8 s, so there's about 3× headroom. A machine would need to be roughly three times slower to hit it. Probably not what's failing.
+  - *Assertion timeout, 5 s* (Playwright's default, used by every `expect(...)` wait, including "the other browser shows the new balance"). This is the tight one. A live update goes through the backend, a database transaction with a row lock, a Socket.io push and a React re-render, all competing with several browsers per test. The 2026-09-25 failures were all this 5 s wait. Only one assertion in the suite raises it (to 10 s, the no-socket test).
+  - *Offline fallback, 3 s* (`useGroupLive.ts`). It's app behaviour, not a test timeout. It only fires if the socket still isn't connected after 3 s, and then only fills an empty screen from REST. It never overwrites live data, and the socket can still connect and join afterwards. A slow machine hitting it would briefly show "offline" and then "live". Tests that wait for "live" wait on the 5 s assertion, not on this. Changing it wouldn't affect the failures.
+- **With fewer workers (2026-09-29):** on the Mac (8 CPUs, so Playwright's default is 4 workers; Docker Desktop with 3.8 GB for its VM), the third run, with `--workers=2`, passed **51 of 51** in 3.8 minutes. Nothing failed, so there was no trace to read. That's 0 failures in 1 run with 2 workers, against 9 failures in 2 runs with the default.
+- **Conclusion.** The failures depend on how much runs in parallel on the machine. On the Mac each test opens two or three browsers, and they compete for CPU with the backend, the Vite dev server and Postgres inside Docker Desktop's VM. The dev machine has 20 cores and runs 10 workers without failures. Cutting the load removed the failures, which fits the "slow machine runs out of time" explanation.
+- **What isn't proven.** Fewer workers also makes a timing race less likely, so one clean run doesn't rule out a race like failure mode 1. No trace of a Mac failure was read. The timeouts are left as they are.
+- **On a machine with fewer resources, run `npx playwright test --workers=2`** for a clean run. It takes a few minutes instead of under one.
 
 **If it shows up again:** run `npx playwright test --output=<dir>` in a loop so the failing test's trace is kept, then check its error snapshot and network log.
 
